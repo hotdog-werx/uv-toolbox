@@ -11,6 +11,6 @@ jobs:
   run-checks:
     uses: hotdog-werx/codeguide/.github/workflows/_ci-checks.yaml@topic/repolish
     with:
-      operating-systems: '["windows-latest", "ubuntu-latest", "macos-latest"]'
+      operating-systems: '["windows-latest", "ubuntu-latest"]'
 
 ## post-check jobs - add your custom jobs here

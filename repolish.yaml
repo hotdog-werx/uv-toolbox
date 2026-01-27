@@ -6,4 +6,4 @@ post_process:
 
 context:
   codeguide_ref: topic/repolish
-  ci_operating_systems: '["windows-latest", "ubuntu-latest", "macos-latest"]'
+  ci_operating_systems: '["windows-latest", "ubuntu-latest"]'
