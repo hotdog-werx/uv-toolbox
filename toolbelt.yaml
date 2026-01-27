@@ -1,0 +1,7 @@
+include:
+  - .pkglink/.codeguide/toolbelt/toolbelt.yaml
+
+variables:
+  TB_COVERAGE_CONFIG: .pkglink/.codeguide/configs/coveragerc.toml
+  TB_COVERAGE_VERBOSE: vv
+  TB_PROJECT_SOURCE: hotlog
