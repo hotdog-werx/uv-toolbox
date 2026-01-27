@@ -1,0 +1,18 @@
+[tool.poe]
+include = [
+  ".pkglink/.codeguide/poe/formatters.toml",
+  ".pkglink/.codeguide/poe/ci-checks.toml",
+  ".pkglink/.codeguide/poe/dev-setup.toml",
+  ".pkglink/.codeguide/poe/docs.toml",
+  ".pkglink/.codeguide/poe/repo-tasks.toml",
+]
+
+[tool.poe.tasks]
+ci-checks.help = "run all checks for CI"
+ci-checks.sequence = [
+  "check-dprint",
+  "check-python",
+  "check-basedpyright",
+  "check-complexity",
+  "check-coverage",
+]
