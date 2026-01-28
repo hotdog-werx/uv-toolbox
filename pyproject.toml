@@ -5,7 +5,7 @@ authors = [{ name = "hotdog-werx" }]
 readme = "README.md"
 license = 'MIT'
 requires-python = ">=3.11"
-dynamic = ["version"]
+version = "0.0.0.dev0"
 
 dependencies = []
 
@@ -13,16 +13,7 @@ dependencies = []
 # uv_toolbox = "uv_toolbox.cli.uv_toolbox:main"
 
 [dependency-groups]
-dev = [
-  "pytest>=8.0.0",
-  "pytest-mock>=3.12.0",
-  "pytest-cov>=4.0.0",
-]
-
-[tool.hatch]
-build.packages = ["uv_toolbox"]
-metadata.allow-direct-references = true
-version.path = 'uv_toolbox/version.py'
+dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
 
 [tool]
 pyright.extends = ".pkglink/.codeguide/configs/pyrightconfig.json"
@@ -30,8 +21,19 @@ pyright.extends = ".pkglink/.codeguide/configs/pyrightconfig.json"
 [tool.releez]
 create-pr = true
 run-changelog-format = true
-hooks = { changelog-format = ["mise", "exec", "--", "poe", "format-dprint", "{changelog}"] }
+hooks = { changelog-format = [
+  "mise",
+  "exec",
+  "--",
+  "poe",
+  "format-dprint",
+  "{changelog}",
+] }
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.9.27,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["uv_toolbox"]
+module-root = ""
