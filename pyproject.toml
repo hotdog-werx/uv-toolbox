@@ -7,16 +7,21 @@ license = 'MIT'
 requires-python = ">=3.11"
 version = "0.0.0.dev0"
 
-dependencies = []
+dependencies = [
+  "typer ==0.21.1",
+  "pydantic >=2.7.0, <3",
+  "pydantic-settings >=2.7.0, <3",
+  'PyYAML >=6,<7',
+]
 
-# [project.scripts]
-# uv_toolbox = "uv_toolbox.cli.uv_toolbox:main"
+[project.scripts]
+uv-toolbox = "uv_toolbox.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
 
-[tool]
-pyright.extends = ".pkglink/.codeguide/configs/pyrightconfig.json"
+[tool.ruff]
+extend = "./.pkglink/.codeguide/configs/ruff.toml"
 
 [tool.releez]
 create-pr = true
