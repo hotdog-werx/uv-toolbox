@@ -1,6 +1,8 @@
 # uv-toolbox
 
-`uv-toolbox` is a CLI tool for managing Python tool environments. It will help you create multiple virtual environments and manage their dependencies through a declarative configuration file.
+`uv-toolbox` is a CLI tool for managing Python tool environments. It will help
+you create multiple virtual environments and manage their dependencies through a
+declarative configuration file.
 
 Here is an example in YAML format:
 

@@ -26,14 +26,7 @@ extend = "./.pkglink/.codeguide/configs/ruff.toml"
 [tool.releez]
 create-pr = true
 run-changelog-format = true
-hooks = { changelog-format = [
-  "mise",
-  "exec",
-  "--",
-  "poe",
-  "format-dprint",
-  "{changelog}",
-] }
+hooks = { changelog-format = ["mise", "exec", "--", "poe", "format-dprint", "{changelog}"] }
 
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]
