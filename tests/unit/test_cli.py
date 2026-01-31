@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
+from uv_toolbox import cli as cli_module
 from uv_toolbox.cli import app
 from uv_toolbox.errors import CommandDelimiterRequiredError
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pytest_mock import MockerFixture
 
 runner = CliRunner()
 
@@ -39,7 +45,7 @@ def _write_config(
     return config_path
 
 
-def test_exec_runs_uv_command(mocker, tmp_path: Path) -> None:
+def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -78,7 +84,7 @@ def test_exec_runs_uv_command(mocker, tmp_path: Path) -> None:
     assert extra_env['VIRTUAL_ENV'] == str(venv_root / 'env1')
 
 
-def test_exec_requires_delimiter(mocker, tmp_path: Path) -> None:
+def test_exec_requires_delimiter(mocker: MockerFixture, tmp_path: Path) -> None:
     config_path = _write_config(
         tmp_path,
         venv_path=tmp_path / '.uv-toolbox',
@@ -115,7 +121,7 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
     assert result.stdout.strip() == f'export PATH="{expected}{os.pathsep}$PATH"'
 
 
-def test_install_initializes_all_envs(mocker, tmp_path: Path) -> None:
+def test_install_initializes_all_envs(mocker: MockerFixture, tmp_path: Path) -> None:
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -131,3 +137,11 @@ def test_install_initializes_all_envs(mocker, tmp_path: Path) -> None:
     assert init_mock.call_count == 2
     names = [call.kwargs['env'].name for call in init_mock.call_args_list]
     assert names == ['env1', 'env2']
+
+
+def test_main_invokes_app(mocker: MockerFixture) -> None:
+    app_mock = mocker.patch('uv_toolbox.cli.app')
+
+    cli_module.main()
+
+    app_mock.assert_called_once_with()
