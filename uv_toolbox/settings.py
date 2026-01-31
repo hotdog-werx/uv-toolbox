@@ -172,7 +172,11 @@ class UvToolboxSettings(BaseSettings):
         return self
 
     @classmethod
-    def from_context(cls, ctx: typer.Context, **overrides: object) -> UvToolboxSettings:
+    def from_context(
+        cls,
+        ctx: typer.Context,
+        **overrides: object,
+    ) -> UvToolboxSettings:
         """Create settings from a Typer context and optional overrides.
 
         Args:
@@ -241,7 +245,10 @@ def _config_file_source(
     config_file: Path,
 ) -> PydanticBaseSettingsSource:
     if config_file.name == 'pyproject.toml':
-        return PyprojectTomlConfigSettingsSource(settings_cls, toml_file=config_file)
+        return PyprojectTomlConfigSettingsSource(
+            settings_cls,
+            toml_file=config_file,
+        )
 
     # Remove this setting if we aren't using pyproject.toml to avoid a warning
     # from pydantic about an unused configuration option.
@@ -273,7 +280,9 @@ def _pyproject_has_uv_toolbox_config(path: Path) -> bool:
 
 
 def _verify_config_file(cli_args: dict[str, object]) -> None:
-    config_file = cli_args.get('config_file') or os.getenv('UV_TOOLBOX_CONFIG_FILE')
+    config_file = cli_args.get('config_file') or os.getenv(
+        'UV_TOOLBOX_CONFIG_FILE',
+    )
     if config_file:
         config_path = Path(str(config_file))
         if not config_path.exists():

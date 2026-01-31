@@ -107,5 +107,5 @@ class MissingConfigFileError(UvToolboxError):
         super().__init__(
             'No configuration file found. '
             f'Searched: {searched}. '
-            'Use --config or UV_TOOLBOX_CONFIG_FILE to specify a file.'
+            'Use --config or UV_TOOLBOX_CONFIG_FILE to specify a file.',
         )
