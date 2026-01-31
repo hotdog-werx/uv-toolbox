@@ -1,10 +1,11 @@
 import os
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from uv_toolbox.errors import UvToolboxError
+from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
 from uv_toolbox.process import run_checked
 from uv_toolbox.settings import UvToolboxSettings
 from uv_toolbox.utils import _filter_nulls, _venv_bin_path
@@ -78,6 +79,8 @@ def exec_(
     ] = None,
 ) -> None:
     """Execute a command within a UV tool environment."""
+    if '--' not in sys.argv:
+        raise CommandDelimiterRequiredError
     cli_args = _filter_nulls({'venv_path': venv_path})
     settings = UvToolboxSettings.model_validate(cli_args)
     try:

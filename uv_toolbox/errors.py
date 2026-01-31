@@ -76,3 +76,10 @@ class MultipleEnvironmentsError(UvToolboxError):
         super().__init__(
             f'Multiple environments configured; use --env to select one. Available environments: {available_list}.',
         )
+
+
+class CommandDelimiterRequiredError(UvToolboxError):
+    """Raised when an exec command is missing the required `--` delimiter."""
+
+    def __init__(self) -> None:
+        super().__init__('Commands must be passed after `--`.')
