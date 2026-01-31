@@ -22,6 +22,11 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+from uv_toolbox.errors import (
+    EnvironmentNotFoundError,
+    MultipleEnvironmentsError,
+)
+
 
 def _to_kebab(name: str) -> str:
     """Convert snake_case to kebab-case."""
@@ -112,26 +117,25 @@ class UvToolboxSettings(BaseSettings):
         populate_by_name=True,
     )
 
-    def get_environment(self, env_name: str) -> UvToolboxEnvironment:
-        """Get an environment by name.
+    def select_environment(self, env_name: str | None) -> UvToolboxEnvironment:
+        """Select an environment by name.
 
-        Args:
-            env_name: The name of the environment to get.
-
-        Returns:
-            The matching environment.
-
-        Raises:
-            ValueError: If no environment with the given name exists.
+        If env_name is none
         """
-        for env in self.environments:
-            if env.name == env_name:
-                return env
-        msg = (
-            f'No environment found with name {env_name!r}. Available '
-            'environments: {[env.name for env in self.environments]}'
-        )
-        raise ValueError(msg)
+        env_name = env_name or self.default_environment
+
+        if env_name is not None:
+            for env in self.environments:
+                if env.name == env_name:
+                    return env
+            available = [env.name for env in self.environments]
+            raise EnvironmentNotFoundError(env_name, available)
+
+        if len(self.environments) == 1:
+            return self.environments[0]
+
+        available = [env.name for env in self.environments]
+        raise MultipleEnvironmentsError(available)
 
     @model_validator(mode='after')
     def ensure_unique_env_names(

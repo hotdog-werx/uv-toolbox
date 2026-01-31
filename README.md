@@ -17,3 +17,23 @@ environments:
       isort
       flake8
 ```
+
+## Usage
+
+Install environments:
+
+```bash
+uv-toolbox install
+```
+
+Run a command inside an environment (uses the configured default if set, otherwise pass `--env`):
+
+```bash
+uv-toolbox exec --env env1 ruff --version
+```
+
+Emit a POSIX shell snippet that prepends all environment bin paths to `PATH`:
+
+```bash
+eval "$(uv-toolbox shim)"
+```
