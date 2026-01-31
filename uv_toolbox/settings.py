@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from os.path import expandvars
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import (
     AliasChoices,
     AliasGenerator,
     BaseModel,
     ConfigDict,
+    Field,
     model_validator,
 )
 from pydantic_settings import (
     BaseSettings,
+    JsonConfigSettingsSource,
     PydanticBaseSettingsSource,
     PyprojectTomlConfigSettingsSource,
     SettingsConfigDict,
@@ -68,18 +71,15 @@ class UvToolboxEnvironment(BaseModel):
             raise ValueError(msg)
         return self
 
-    @property
-    def venv_path(self) -> Path:
+    def venv_path(self, settings: UvToolboxSettings) -> Path:
         """Get the path to the virtual environment for this environment."""
-        settings = UvToolboxSettings.model_validate({})
         return settings.venv_path / self.name
 
-    @property
-    def process_env(self) -> dict[str, str]:
+    def process_env(self, settings: UvToolboxSettings) -> dict[str, str]:
         """Environment variables for processes run in this environment."""
         return {
             **{k: expandvars(v) for k, v in self.environment.items()},
-            'VIRTUAL_ENV': str(self.venv_path),
+            'VIRTUAL_ENV': str(self.venv_path(settings=settings)),
         }
 
 
@@ -87,13 +87,21 @@ class UvToolboxSettings(BaseSettings):
     """Settings loaded from config files.
 
     Precedence (highest first):
-      1. uv-toolbox.yaml
-      2. uv-toolbox.toml
-      3. pyproject.toml ([tool.uv-toolbox])
+      1. CLI args (passed to initialization)
+      2. Environment variables (with `UV_TOOLBOX_` prefix)
+      3. Configuration files, in order:
+        1. uv-toolbox.yaml
+        2. uv-toolbox.json
+        3. uv-toolbox.toml
+        4. pyproject.toml ([tool.uv-toolbox])
     """
 
     venv_path: Path = Path.cwd() / '.uv-toolbox'
-    environments: list[UvToolboxEnvironment]
+    default_environment: str | None = None
+    environments: Annotated[
+        list[UvToolboxEnvironment],
+        Field(min_length=1),
+    ]
 
     model_config = SettingsConfigDict(
         env_prefix='UV_TOOLBOX_',
@@ -103,6 +111,27 @@ class UvToolboxSettings(BaseSettings):
         alias_generator=_ALIASES,
         populate_by_name=True,
     )
+
+    def get_environment(self, env_name: str) -> UvToolboxEnvironment:
+        """Get an environment by name.
+
+        Args:
+            env_name: The name of the environment to get.
+
+        Returns:
+            The matching environment.
+
+        Raises:
+            ValueError: If no environment with the given name exists.
+        """
+        for env in self.environments:
+            if env.name == env_name:
+                return env
+        msg = (
+            f'No environment found with name {env_name!r}. Available '
+            'environments: {[env.name for env in self.environments]}'
+        )
+        raise ValueError(msg)
 
     @model_validator(mode='after')
     def ensure_unique_env_names(
@@ -116,12 +145,24 @@ class UvToolboxSettings(BaseSettings):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode='after')
+    def ensure_valid_default_environment(
+        self,
+    ) -> UvToolboxSettings:
+        """Validate that the default environment name exists."""
+        if self.default_environment is not None:
+            env_names = {env.name for env in self.environments}
+            if self.default_environment not in env_names:
+                msg = f'Default environment {self.default_environment!r} not found in environments.'
+                raise ValueError(msg)
+        return self
+
     @classmethod
     def settings_customise_sources(
         cls,
         settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,  # noqa: ARG003
-        env_settings: PydanticBaseSettingsSource,  # noqa: ARG003
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
         dotenv_settings: PydanticBaseSettingsSource,  # noqa: ARG003
         file_secret_settings: PydanticBaseSettingsSource,  # noqa: ARG003
     ) -> tuple[PydanticBaseSettingsSource, ...]:
@@ -130,13 +171,20 @@ class UvToolboxSettings(BaseSettings):
             settings_cls,
             yaml_file='uv-toolbox.yaml',
         )
+        uv_toolbox_json = JsonConfigSettingsSource(
+            settings_cls,
+            json_file='uv-toolbox.json',
+        )
         uv_toolbox_toml = TomlConfigSettingsSource(
             settings_cls,
             toml_file='uv-toolbox.toml',
         )
         pyproject_toml = PyprojectTomlConfigSettingsSource(settings_cls)
         return (
+            init_settings,
+            env_settings,
             uv_toolbox_yaml,
+            uv_toolbox_json,
             uv_toolbox_toml,
             pyproject_toml,
         )
