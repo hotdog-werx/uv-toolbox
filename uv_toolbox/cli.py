@@ -15,24 +15,36 @@ app = typer.Typer(help='CLI tool for managing UV tool environments.')
 
 
 @app.callback()
-def _root(ctx: typer.Context) -> None:
+def _root(
+    ctx: typer.Context,
+    config_file: Annotated[
+        Path | None,
+        typer.Option(
+            ...,
+            '--config',
+            '-c',
+            help='Path to a uv-toolbox config file.',
+        ),
+    ] = None,
+) -> None:
     """UV Toolbox CLI."""
+    ctx.obj = _filter_nulls({'config_file': config_file})
 
 
 @app.command(name='install')
 def install(
+    ctx: typer.Context,
     venv_path: Annotated[
         Path | None,
         typer.Option(
-            str(UvToolboxSettings.model_validate({}).venv_path),
+            ...,
             '--venv-path',
             help='Path to the directory where virtual environments are stored.',
         ),
     ] = None,
 ) -> None:
     """Install UV tool environments."""
-    cli_args = _filter_nulls({'venv_path': venv_path})
-    settings = UvToolboxSettings.model_validate(cli_args)
+    settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     for env in settings.environments:
         try:
             initialize_virtualenv(env=env, settings=settings)
@@ -43,6 +55,7 @@ def install(
 
 @app.command(name='exec')
 def exec_(
+    ctx: typer.Context,
     *,
     command: Annotated[
         list[str],
@@ -72,7 +85,7 @@ def exec_(
     venv_path: Annotated[
         Path | None,
         typer.Option(
-            str(UvToolboxSettings.model_validate({}).venv_path),
+            ...,
             '--venv-path',
             help='Path to the directory where virtual environments are stored.',
         ),
@@ -81,8 +94,7 @@ def exec_(
     """Execute a command within a UV tool environment."""
     if '--' not in sys.argv:
         raise CommandDelimiterRequiredError
-    cli_args = _filter_nulls({'venv_path': venv_path})
-    settings = UvToolboxSettings.model_validate(cli_args)
+    settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     try:
         env = settings.select_environment(
             env_name=env_name,
@@ -104,18 +116,18 @@ def exec_(
 
 @app.command(name='shim')
 def shim(
+    ctx: typer.Context,
     venv_path: Annotated[
         Path | None,
         typer.Option(
-            str(UvToolboxSettings.model_validate({}).venv_path),
+            ...,
             '--venv-path',
             help='Path to the directory where virtual environments are stored.',
         ),
     ] = None,
 ) -> None:
     """Emit shell code to prepend environment bin paths to PATH."""
-    cli_args = _filter_nulls({'venv_path': venv_path})
-    settings = UvToolboxSettings.model_validate(cli_args)
+    settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     shim_paths = [str(_venv_bin_path(env.venv_path(settings=settings))) for env in settings.environments]
     shim_path = os.pathsep.join(shim_paths)
     typer.echo(f'export PATH="{shim_path}{os.pathsep}$PATH"')

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
+import tomllib
 from os.path import expandvars
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, cast
 
 from pydantic import (
     AliasChoices,
@@ -14,6 +16,7 @@ from pydantic import (
 )
 from pydantic_settings import (
     BaseSettings,
+    InitSettingsSource,
     JsonConfigSettingsSource,
     PydanticBaseSettingsSource,
     PyprojectTomlConfigSettingsSource,
@@ -23,9 +26,15 @@ from pydantic_settings import (
 )
 
 from uv_toolbox.errors import (
+    ConfigFileNotFoundError,
     EnvironmentNotFoundError,
+    MissingConfigFileError,
     MultipleEnvironmentsError,
 )
+from uv_toolbox.utils import _filter_nulls
+
+if TYPE_CHECKING:
+    import typer
 
 
 def _to_kebab(name: str) -> str:
@@ -101,6 +110,7 @@ class UvToolboxSettings(BaseSettings):
         4. pyproject.toml ([tool.uv-toolbox])
     """
 
+    config_file: Path | None = None
     venv_path: Path = Path.cwd() / '.uv-toolbox'
     default_environment: str | None = None
     environments: Annotated[
@@ -162,6 +172,24 @@ class UvToolboxSettings(BaseSettings):
         return self
 
     @classmethod
+    def from_context(cls, ctx: typer.Context, **overrides: object) -> UvToolboxSettings:
+        """Create settings from a Typer context and optional overrides.
+
+        Args:
+            ctx: Typer context containing CLI args.
+            **overrides: Additional settings to override.
+
+        Returns:
+            UvToolboxSettings instance.
+        """
+        cli_args = {
+            **(ctx.obj or {}),
+            **_filter_nulls(overrides),
+        }
+        _verify_config_file(cli_args)
+        return UvToolboxSettings.model_validate(cli_args)
+
+    @classmethod
     def settings_customise_sources(
         cls,
         settings_cls: type[BaseSettings],
@@ -171,6 +199,20 @@ class UvToolboxSettings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,  # noqa: ARG003
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Customize settings sources for UV Toolbox."""
+        init_kwargs = cast('InitSettingsSource', init_settings).init_kwargs
+        config_file = init_kwargs.get('config_file')
+
+        if config_file is None:
+            config_file = os.environ.get('UV_TOOLBOX_CONFIG_FILE')
+
+        if config_file:
+            config_source = _config_file_source(settings_cls, Path(config_file))
+            return (
+                init_settings,
+                env_settings,
+                config_source,
+            )
+
         uv_toolbox_yaml = YamlConfigSettingsSource(
             settings_cls,
             yaml_file='uv-toolbox.yaml',
@@ -192,3 +234,59 @@ class UvToolboxSettings(BaseSettings):
             uv_toolbox_toml,
             pyproject_toml,
         )
+
+
+def _config_file_source(
+    settings_cls: type[BaseSettings],
+    config_file: Path,
+) -> PydanticBaseSettingsSource:
+    if config_file.name == 'pyproject.toml':
+        return PyprojectTomlConfigSettingsSource(settings_cls, toml_file=config_file)
+
+    # Remove this setting if we aren't using pyproject.toml to avoid a warning
+    # from pydantic about an unused configuration option.
+    settings_cls.model_config.pop('pyproject_toml_table_header', None)
+
+    suffix = config_file.suffix.lower()
+    if suffix in {'.yaml', '.yml'}:
+        return YamlConfigSettingsSource(settings_cls, yaml_file=config_file)
+    if suffix == '.json':
+        return JsonConfigSettingsSource(settings_cls, json_file=config_file)
+    if suffix == '.toml':
+        return TomlConfigSettingsSource(settings_cls, toml_file=config_file)
+    msg = f'Unsupported config file extension: {config_file}'
+    raise ValueError(msg)
+
+
+def _pyproject_has_uv_toolbox_config(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        data = tomllib.loads(path.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+    tool_section = data.get('tool')
+    if not isinstance(tool_section, dict):
+        return False
+    uv_section = tool_section.get('uv-toolbox')
+    return isinstance(uv_section, dict)
+
+
+def _verify_config_file(cli_args: dict[str, object]) -> None:
+    config_file = cli_args.get('config_file') or os.getenv('UV_TOOLBOX_CONFIG_FILE')
+    if config_file:
+        config_path = Path(str(config_file))
+        if not config_path.exists():
+            raise ConfigFileNotFoundError(config_path)
+        return
+
+    config_candidates = [
+        Path.cwd() / 'uv-toolbox.yaml',
+        Path.cwd() / 'uv-toolbox.json',
+        Path.cwd() / 'uv-toolbox.toml',
+    ]
+    pyproject_path = Path.cwd() / 'pyproject.toml'
+    has_pyproject_config = _pyproject_has_uv_toolbox_config(pyproject_path)
+    if not any(candidate.exists() for candidate in config_candidates) and not has_pyproject_config:
+        searched = [*config_candidates, pyproject_path]
+        raise MissingConfigFileError(searched)

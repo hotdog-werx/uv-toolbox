@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -83,3 +84,28 @@ class CommandDelimiterRequiredError(UvToolboxError):
 
     def __init__(self) -> None:
         super().__init__('Commands must be passed after `--`.')
+
+
+class ConfigFileNotFoundError(UvToolboxError):
+    """Raised when an explicit config file path does not exist."""
+
+    config_file: Path
+
+    def __init__(self, config_file: Path) -> None:
+        self.config_file = config_file
+        super().__init__(f'Configuration file not found: {config_file}')
+
+
+class MissingConfigFileError(UvToolboxError):
+    """Raised when no configuration file can be found."""
+
+    searched_files: list[Path]
+
+    def __init__(self, searched_files: list[Path]) -> None:
+        self.searched_files = searched_files
+        searched = ', '.join(str(path) for path in searched_files)
+        super().__init__(
+            'No configuration file found. '
+            f'Searched: {searched}. '
+            'Use --config or UV_TOOLBOX_CONFIG_FILE to specify a file.'
+        )
