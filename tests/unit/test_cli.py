@@ -121,7 +121,10 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
     assert result.stdout.strip() == f'export PATH="{expected}{os.pathsep}$PATH"'
 
 
-def test_install_initializes_all_envs(mocker: MockerFixture, tmp_path: Path) -> None:
+def test_install_initializes_all_envs(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,

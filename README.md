@@ -26,7 +26,8 @@ Install environments:
 uv-toolbox install
 ```
 
-Run a command inside an environment (uses the configured default if set, otherwise pass `--env`):
+Run a command inside an environment (uses the configured default if set,
+otherwise pass `--env`):
 
 ```bash
 uv-toolbox exec --env env1 -- ruff --version
