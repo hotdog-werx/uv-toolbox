@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from os.path import expandvars
 from pathlib import Path
 
 from pydantic import (
@@ -77,7 +78,7 @@ class UvToolboxEnvironment(BaseModel):
     def process_env(self) -> dict[str, str]:
         """Environment variables for processes run in this environment."""
         return {
-            **self.environment,
+            **{k: expandvars(v) for k, v in self.environment.items()},
             'VIRTUAL_ENV': str(self.venv_path),
         }
 
