@@ -75,8 +75,8 @@ def test_environment_process_env_expands_vars(
 
     process_env = env.process_env(settings=settings)
 
-    assert process_env['TOOLS'] == str(tmp_path / 'tools')
-    assert process_env['VIRTUAL_ENV'] == str(tmp_path / '.uv-toolbox' / 'env1')
+    assert Path(process_env['TOOLS']) == tmp_path / 'tools'
+    assert Path(process_env['VIRTUAL_ENV']) == tmp_path / '.uv-toolbox' / 'env1'
 
 
 def test_settings_reject_duplicate_env_names() -> None:

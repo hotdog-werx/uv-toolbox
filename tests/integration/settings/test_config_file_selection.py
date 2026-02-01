@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -22,10 +23,11 @@ runner = CliRunner()
 
 def _write_config(tmp_path: Path) -> Path:
     config_path = tmp_path / 'uvtb.yaml'
+    venv_path = (tmp_path / '.uv-toolbox').as_posix()
     config_path.write_text(
         '\n'.join(
             [
-                f'venv_path: {tmp_path / ".uv-toolbox"}',
+                f'venv_path: {venv_path}',
                 'environments:',
                 '  - name: env1',
                 '    requirements: ruff',
@@ -160,11 +162,12 @@ def test_from_context_reads_pyproject_when_config_set(
     tmp_path: Path,
 ) -> None:
     pyproject_path = tmp_path / 'pyproject.toml'
+    venv_path = (tmp_path / '.uv-toolbox').as_posix()
     pyproject_path.write_text(
         '\n'.join(
             [
                 '[tool.uv-toolbox]',
-                f'venv_path = "{tmp_path / ".uv-toolbox"}"',
+                f'venv_path = "{venv_path}"',
                 '[[tool.uv-toolbox.environments]]',
                 'name = "env1"',
                 'requirements = "ruff"',
@@ -192,16 +195,19 @@ def test_from_context_reads_json_and_toml_configs(
     config_path = tmp_path / f'config.{suffix}'
     if suffix == 'json':
         config_path.write_text(
-            '{'
-            f'"venv_path": "{tmp_path / ".uv-toolbox"}", '
-            '"environments": [{"name": "env1", "requirements": "ruff"}]'
-            '}',
+            json.dumps(
+                {
+                    'venv_path': (tmp_path / '.uv-toolbox').as_posix(),
+                    'environments': [{'name': 'env1', 'requirements': 'ruff'}],
+                },
+            ),
         )
     else:
+        venv_path = (tmp_path / '.uv-toolbox').as_posix()
         config_path.write_text(
             '\n'.join(
                 [
-                    f'venv_path = "{tmp_path / ".uv-toolbox"}"',
+                    f'venv_path = "{venv_path}"',
                     '[[environments]]',
                     'name = "env1"',
                     'requirements = "ruff"',
