@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import TYPE_CHECKING
+import typing
 
 from uv_toolbox.errors import ExternalCommandError, MissingCliError
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 

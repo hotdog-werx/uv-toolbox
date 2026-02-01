@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import tomllib
+import typing
+import warnings
+from contextlib import contextmanager
 from os.path import expandvars
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, cast
 
 from pydantic import (
     AliasChoices,
@@ -33,7 +35,9 @@ from uv_toolbox.errors import (
 )
 from uv_toolbox.utils import _filter_nulls
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
+    from collections.abc import Iterator
+
     import typer
 
 
@@ -113,7 +117,7 @@ class UvToolboxSettings(BaseSettings):
     config_file: Path | None = None
     venv_path: Path = Path.cwd() / '.uv-toolbox'
     default_environment: str | None = None
-    environments: Annotated[
+    environments: typing.Annotated[
         list[UvToolboxEnvironment],
         Field(min_length=1),
     ]
@@ -191,7 +195,8 @@ class UvToolboxSettings(BaseSettings):
             **_filter_nulls(overrides),
         }
         _verify_config_file(cli_args)
-        return UvToolboxSettings.model_validate(cli_args)
+        with _suppress_unused_pyproject_warning():
+            return UvToolboxSettings.model_validate(cli_args)
 
     @classmethod
     def settings_customise_sources(
@@ -203,7 +208,7 @@ class UvToolboxSettings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,  # noqa: ARG003
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Customize settings sources for UV Toolbox."""
-        init_kwargs = cast('InitSettingsSource', init_settings).init_kwargs
+        init_kwargs = typing.cast('InitSettingsSource', init_settings).init_kwargs
         config_file = init_kwargs.get('config_file')
 
         if config_file is None:
@@ -250,10 +255,6 @@ def _config_file_source(
             toml_file=config_file,
         )
 
-    # Remove this setting if we aren't using pyproject.toml to avoid a warning
-    # from pydantic about an unused configuration option.
-    settings_cls.model_config.pop('pyproject_toml_table_header', None)
-
     suffix = config_file.suffix.lower()
     if suffix in {'.yaml', '.yml'}:
         return YamlConfigSettingsSource(settings_cls, yaml_file=config_file)
@@ -299,3 +300,18 @@ def _verify_config_file(cli_args: dict[str, object]) -> None:
     if not any(candidate.exists() for candidate in config_candidates) and not has_pyproject_config:
         searched = [*config_candidates, pyproject_path]
         raise MissingConfigFileError(searched)
+
+
+@contextmanager
+def _suppress_unused_pyproject_warning() -> Iterator[None]:
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            'ignore',
+            message=(
+                r'Config key `pyproject_toml_table_header` is set in model_config '
+                r'but will be ignored because no PyprojectTomlConfigSettingsSource '
+                r'source is configured\..*'
+            ),
+            category=UserWarning,
+        )
+        yield
