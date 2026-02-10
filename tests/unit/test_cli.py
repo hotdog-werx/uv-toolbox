@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -11,8 +12,6 @@ from uv_toolbox.cli import app
 from uv_toolbox.errors import CommandDelimiterRequiredError
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pytest_mock import MockerFixture
 
 runner = CliRunner()
@@ -83,7 +82,10 @@ def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     extra_env = run_mock.call_args.kwargs['extra_env']
     # Check that VIRTUAL_ENV is in the venv_root (content-addressed subdir)
     assert extra_env['VIRTUAL_ENV'].startswith(str(venv_root))
-    assert len(extra_env['VIRTUAL_ENV'].split('/')[-1]) == 12  # Hash is 12 chars
+    # Extract just the final directory name (the hash) - platform independent
+
+    venv_hash = Path(extra_env['VIRTUAL_ENV']).name
+    assert len(venv_hash) == 12  # Hash is 12 chars
 
 
 def test_exec_requires_delimiter(mocker: MockerFixture, tmp_path: Path) -> None:
@@ -116,11 +118,12 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
     output = result.stdout.strip()
     # Check format is correct
     assert output.startswith('export PATH="')
-    assert output.endswith(':$PATH"')
+    assert output.endswith(f'{os.pathsep}$PATH"')
     # Check both venvs are included (content-addressed, so hashes not names)
     bin_dir = 'Scripts' if os.name == 'nt' else 'bin'
     assert str(venv_root) in output
-    assert f'/{bin_dir}:' in output or f'/{bin_dir}"' in output
+    # Platform-independent check for bin/Scripts directory in output
+    assert f'{os.sep}{bin_dir}{os.pathsep}' in output or f'{os.sep}{bin_dir}"' in output
     # Check two paths are present (two hashes)
     assert output.count(str(venv_root)) == 2
 
