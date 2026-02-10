@@ -34,6 +34,7 @@ def _root(
 @app.command(name='install')
 def install(
     ctx: typer.Context,
+    *,
     venv_path: Annotated[
         Path | None,
         typer.Option(
@@ -42,12 +43,21 @@ def install(
             help='Path to the directory where virtual environments are stored.',
         ),
     ] = None,
+    clear: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            '--clear',
+            '-c',
+            help='Clear and recreate the virtual environments.',
+        ),
+    ] = False,
 ) -> None:
     """Install UV tool environments."""
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     for env in settings.environments:
         try:
-            initialize_virtualenv(env=env, settings=settings)
+            initialize_virtualenv(env=env, settings=settings, clear=clear)
         except UvToolboxError as exc:
             typer.secho(str(exc), err=True, fg=typer.colors.RED)
             raise typer.Exit(code=1) from exc
@@ -73,13 +83,13 @@ def exec_(
             help='Environment name (required when multiple environments exist).',
         ),
     ] = None,
-    force_reinitialize: Annotated[
+    clear: Annotated[
         bool,
         typer.Option(
             ...,
-            '--force-reinitialize',
-            '-f',
-            help='Force re-initialization of the virtual environment.',
+            '--clear',
+            '-c',
+            help='Clear and recreate the virtual environment.',
         ),
     ] = False,
     venv_path: Annotated[
@@ -100,8 +110,12 @@ def exec_(
             env_name=env_name,
         )
 
-        if not env.venv_path(settings=settings).exists() or force_reinitialize:
-            initialize_virtualenv(env=env, settings=settings)
+        if not env.venv_path(settings=settings).exists() or clear:
+            initialize_virtualenv(
+                env=env,
+                settings=settings,
+                clear=clear,
+            )
 
         run_checked(
             args=['uv', 'run', '--active', '--', *command],

@@ -51,6 +51,22 @@ def test_create_virtualenv_runs_uv_venv(
     )
 
 
+def test_create_virtualenv_with_clear_flag(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    env = UvToolboxEnvironment(name='env1', requirements='ruff')
+    settings = _make_settings(tmp_path, env=env)
+    run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked')
+
+    create_virtualenv(env=env, settings=settings, clear=True)
+
+    run_mock.assert_called_once_with(
+        args=['uv', 'venv', str(env.venv_path(settings=settings)), '--clear'],
+        extra_env=env.process_env(settings=settings),
+    )
+
+
 def test_install_requirements_uses_requirements_file(
     mocker: MockerFixture,
     tmp_path: Path,
