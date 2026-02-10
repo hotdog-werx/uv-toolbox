@@ -48,6 +48,9 @@ def test_create_virtualenv_runs_uv_venv(
     run_mock.assert_called_once_with(
         args=['uv', 'venv', str(env.venv_path(settings=settings))],
         extra_env=env.process_env(settings=settings),
+        capture_stdout=False,
+        capture_stderr=False,
+        show_command=True,
     )
 
 
@@ -64,6 +67,9 @@ def test_create_virtualenv_with_clear_flag(
     run_mock.assert_called_once_with(
         args=['uv', 'venv', str(env.venv_path(settings=settings)), '--clear'],
         extra_env=env.process_env(settings=settings),
+        capture_stdout=False,
+        capture_stderr=False,
+        show_command=True,
     )
 
 
@@ -87,6 +93,9 @@ def test_install_requirements_uses_requirements_file(
     run_mock.assert_called_once_with(
         args=['uv', 'pip', 'install', '-r', str(req_file), '--exact'],
         extra_env=env.process_env(settings=settings),
+        capture_stdout=False,
+        capture_stderr=False,
+        show_command=True,
     )
     rmtree_mock.assert_not_called()
     mkdtemp_mock.assert_not_called()
@@ -117,6 +126,9 @@ def test_install_requirements_writes_temp_file(
     run_mock.assert_called_once_with(
         args=['uv', 'pip', 'install', '-r', str(temp_req_file), '--exact'],
         extra_env=env.process_env(settings=settings),
+        capture_stdout=False,
+        capture_stderr=False,
+        show_command=True,
     )
     rmtree_mock.assert_called_once_with(temp_dir)
 

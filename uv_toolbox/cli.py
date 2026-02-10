@@ -122,6 +122,7 @@ def exec_(
             capture_stdout=False,
             capture_stderr=False,
             extra_env=env.process_env(settings=settings),
+            show_command=True,
         )
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)

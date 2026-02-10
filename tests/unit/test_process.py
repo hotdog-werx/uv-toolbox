@@ -90,3 +90,21 @@ def test_run_checked_omits_stderr_when_capture_disabled(
         run_checked(['cmd'], capture_stderr=False)
 
     assert exc_info.value.stderr == ''
+
+
+def test_run_checked_prints_command_when_show_command_enabled(
+    mocker: MockerFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    completed = SimpleNamespace(stdout='ok\n')
+    mocker.patch(
+        'uv_toolbox.process.subprocess.run',
+        return_value=completed,
+    )
+
+    run_checked(['uv', 'venv', '/path/to/venv'], show_command=True)
+
+    captured = capsys.readouterr()
+    # Command should be printed to stderr with arrow prefix
+    assert '▶' in captured.err
+    assert 'uv venv /path/to/venv' in captured.err
