@@ -67,7 +67,9 @@ def test_missing_cli_error_message_for_multiple_cli_names() -> None:
     assert 'Required CLIs' in str(exc)
 
 
-def test_run_checked_raises_external_command_error(mocker: MockerFixture) -> None:
+def test_run_checked_raises_external_command_error(
+    mocker: MockerFixture,
+) -> None:
     err = subprocess.CalledProcessError(2, ['cmd'], output='', stderr='boom\n')
     mocker.patch('uv_toolbox.process.subprocess.run', side_effect=err)
 
@@ -78,7 +80,9 @@ def test_run_checked_raises_external_command_error(mocker: MockerFixture) -> Non
     assert exc_info.value.stderr == 'boom'
 
 
-def test_run_checked_omits_stderr_when_capture_disabled(mocker: MockerFixture) -> None:
+def test_run_checked_omits_stderr_when_capture_disabled(
+    mocker: MockerFixture,
+) -> None:
     err = subprocess.CalledProcessError(2, ['cmd'], output='', stderr='boom\n')
     mocker.patch('uv_toolbox.process.subprocess.run', side_effect=err)
 

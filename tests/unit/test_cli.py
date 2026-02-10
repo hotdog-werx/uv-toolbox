@@ -81,7 +81,9 @@ def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     args = run_mock.call_args.kwargs['args']
     assert args == ['uv', 'run', '--active', '--', 'ruff', '--version']
     extra_env = run_mock.call_args.kwargs['extra_env']
-    assert extra_env['VIRTUAL_ENV'] == str(venv_root / 'env1')
+    # Check that VIRTUAL_ENV is in the venv_root (content-addressed subdir)
+    assert extra_env['VIRTUAL_ENV'].startswith(str(venv_root))
+    assert len(extra_env['VIRTUAL_ENV'].split('/')[-1]) == 12  # Hash is 12 chars
 
 
 def test_exec_requires_delimiter(mocker: MockerFixture, tmp_path: Path) -> None:
@@ -111,14 +113,16 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
     result = runner.invoke(app, ['--config', str(config_path), 'shim'])
 
     assert result.exit_code == 0
+    output = result.stdout.strip()
+    # Check format is correct
+    assert output.startswith('export PATH="')
+    assert output.endswith(':$PATH"')
+    # Check both venvs are included (content-addressed, so hashes not names)
     bin_dir = 'Scripts' if os.name == 'nt' else 'bin'
-    expected = os.pathsep.join(
-        [
-            str(venv_root / 'env1' / bin_dir),
-            str(venv_root / 'env2' / bin_dir),
-        ],
-    )
-    assert result.stdout.strip() == f'export PATH="{expected}{os.pathsep}$PATH"'
+    assert str(venv_root) in output
+    assert f'/{bin_dir}:' in output or f'/{bin_dir}"' in output
+    # Check two paths are present (two hashes)
+    assert output.count(str(venv_root)) == 2
 
 
 def test_install_initializes_all_envs(

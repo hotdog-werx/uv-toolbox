@@ -13,8 +13,11 @@ isolated environment and pinned versions.
   with exact versions
 - **Zero conflicts**: Each tool gets its own isolated virtual environment
   powered by uv's blazing-fast resolver
+- **Automatic deduplication**: Identical requirements across projects share the
+  same venv via content-addressed storage
 - **Reproducible across teams**: Lock down tool versions so everyone runs the
   same formatter, linter, or test runner
+- **Works from subdirectories**: Run commands from anywhere in your project
 - **Simple execution**: Run tools with `uv-toolbox exec` or add them all to your
   PATH with `eval "$(uv-toolbox shim)"`
 - **Leverage uv speed**: Built on top of [uv](https://github.com/astral-sh/uv),

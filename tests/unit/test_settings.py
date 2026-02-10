@@ -53,7 +53,10 @@ def test_environment_paths_from_settings(tmp_path: Path) -> None:
     )
     env = settings.environments[0]
 
-    assert env.venv_path(settings=settings) == tmp_path / '.uv-toolbox' / 'env1'
+    # Venv path should be content-addressed (hash-based)
+    venv_path = env.venv_path(settings=settings)
+    assert venv_path.parent == tmp_path / '.uv-toolbox'
+    assert len(venv_path.name) == 12  # Hash is 12 characters
 
 
 def test_environment_process_env_expands_vars(
@@ -76,7 +79,10 @@ def test_environment_process_env_expands_vars(
     process_env = env.process_env(settings=settings)
 
     assert Path(process_env['TOOLS']) == tmp_path / 'tools'
-    assert Path(process_env['VIRTUAL_ENV']) == tmp_path / '.uv-toolbox' / 'env1'
+    # VIRTUAL_ENV should be content-addressed
+    virtual_env = Path(process_env['VIRTUAL_ENV'])
+    assert virtual_env.parent == tmp_path / '.uv-toolbox'
+    assert len(virtual_env.name) == 12  # Hash is 12 characters
 
 
 def test_settings_reject_duplicate_env_names() -> None:

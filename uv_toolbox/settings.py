@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import tomllib
 import typing
@@ -89,9 +90,49 @@ class UvToolboxEnvironment(BaseModel):
             raise ValueError(msg)
         return self
 
+    @staticmethod
+    def _normalize_requirements(req: str) -> str:
+        """Normalize requirements string for consistent hashing.
+
+        - Removes comments and blank lines
+        - Strips whitespace
+        - Sorts lines alphabetically for consistency
+        """
+        lines = [line.strip() for line in req.strip().split('\n')]
+        # Remove empty lines and comments
+        lines = [line for line in lines if line and not line.startswith('#')]
+        # Sort for consistency
+        return '\n'.join(sorted(lines))
+
+    def _get_requirements_hash(self) -> str:
+        """Generate a hash of the environment's requirements.
+
+        Returns a 12-character hex string based on the normalized requirements.
+        """
+        if self.requirements:
+            normalized = self._normalize_requirements(self.requirements)
+        else:
+            # Read and normalize requirements file
+            if self.requirements_file is None:  # pragma: no cover
+                # Impossible: check_requirements validator ensures one is set
+                msg = 'Either requirements or requirements_file must be set'
+                raise ValueError(msg)  # pragma: no cover
+            normalized = self._normalize_requirements(
+                self.requirements_file.read_text(),
+            )
+
+        # Use SHA-256 for hashing (truncated to 12 chars for readability)
+        return hashlib.sha256(normalized.encode()).hexdigest()[:12]
+
     def venv_path(self, settings: UvToolboxSettings) -> Path:
-        """Get the path to the virtual environment for this environment."""
-        return settings.venv_path / self.name
+        """Get the path to the virtual environment for this environment.
+
+        Uses content-based addressing: the venv location is determined by
+        hashing the normalized requirements, ensuring identical requirements
+        share the same venv across projects.
+        """
+        req_hash = self._get_requirements_hash()
+        return settings.resolved_venv_path / req_hash
 
     def process_env(self, settings: UvToolboxSettings) -> dict[str, str]:
         """Environment variables for processes run in this environment."""
@@ -115,7 +156,7 @@ class UvToolboxSettings(BaseSettings):
     """
 
     config_file: Path | None = None
-    venv_path: Path = Path.cwd() / '.uv-toolbox'
+    venv_path: Path = Path.home() / '.cache' / 'uv-toolbox'
     default_environment: str | None = None
     environments: typing.Annotated[
         list[UvToolboxEnvironment],
@@ -130,6 +171,26 @@ class UvToolboxSettings(BaseSettings):
         alias_generator=_ALIASES,
         populate_by_name=True,
     )
+
+    @property
+    def resolved_venv_path(self) -> Path:
+        """Resolve the venv path.
+
+        Behavior:
+        - Relative paths: resolved relative to config file location
+        - Absolute paths: used as-is
+
+        Individual venvs are stored in content-addressed subdirectories based
+        on hashing their requirements.
+        """
+        # Determine base path
+        if self.venv_path.is_absolute():
+            return self.venv_path
+        if self.config_file is None:  # pragma: no cover
+            # Defensive: shouldn't happen in normal CLI use (only in direct model_validate)
+            return Path.cwd() / self.venv_path
+        # Relative path - resolve from config file location
+        return self.config_file.parent / self.venv_path
 
     def select_environment(self, env_name: str | None) -> UvToolboxEnvironment:
         """Select an environment by name.
@@ -208,7 +269,10 @@ class UvToolboxSettings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,  # noqa: ARG003
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Customize settings sources for UV Toolbox."""
-        init_kwargs = typing.cast('InitSettingsSource', init_settings).init_kwargs
+        init_kwargs = typing.cast(
+            'InitSettingsSource',
+            init_settings,
+        ).init_kwargs
         config_file = init_kwargs.get('config_file')
 
         if config_file is None:
@@ -280,6 +344,70 @@ def _pyproject_has_uv_toolbox_config(path: Path) -> bool:
     return isinstance(uv_section, dict)
 
 
+def _check_directory_for_config(directory: Path) -> Path | None:
+    """Check a directory for UV Toolbox config files.
+
+    Args:
+        directory: Directory to check
+
+    Returns:
+        Path to config file if found, None otherwise
+    """
+    config_names = [
+        'uv-toolbox.yaml',
+        'uv-toolbox.json',
+        'uv-toolbox.toml',
+    ]
+
+    # Check for dedicated config files
+    for name in config_names:
+        config_path = directory / name
+        if config_path.exists():
+            return config_path
+
+    # Check pyproject.toml with [tool.uv-toolbox] section
+    pyproject = directory / 'pyproject.toml'
+    if pyproject.exists() and _pyproject_has_uv_toolbox_config(pyproject):
+        return pyproject
+
+    return None
+
+
+def _find_config_file(start_path: Path | None = None) -> Path | None:
+    """Find UV Toolbox config file by walking up the directory tree.
+
+    Searches for config files in this order:
+    1. uv-toolbox.yaml
+    2. uv-toolbox.json
+    3. uv-toolbox.toml
+    4. pyproject.toml (with [tool.uv-toolbox] section)
+
+    Stops at:
+    - First config file found
+    - .git directory (project boundary)
+    - Filesystem root
+
+    Args:
+        start_path: Directory to start searching from (defaults to cwd)
+
+    Returns:
+        Path to config file, or None if not found
+    """
+    current = start_path or Path.cwd()
+
+    for parent in [current, *current.parents]:
+        # Check this directory for config files
+        config_file = _check_directory_for_config(parent)
+        if config_file:
+            return config_file
+
+        # Stop at git root as a boundary
+        if (parent / '.git').exists():
+            break
+
+    return None
+
+
 def _verify_config_file(cli_args: dict[str, object]) -> None:
     config_file = cli_args.get('config_file') or os.getenv(
         'UV_TOOLBOX_CONFIG_FILE',
@@ -288,18 +416,34 @@ def _verify_config_file(cli_args: dict[str, object]) -> None:
         config_path = Path(str(config_file))
         if not config_path.exists():
             raise ConfigFileNotFoundError(config_path)
+        # Store the config file path for later use
+        cli_args['config_file'] = config_path
         return
 
+    # Search up the directory tree for a config file
+    found_config = _find_config_file()
+    if found_config:
+        # Store the found config file path
+        cli_args['config_file'] = found_config
+        return
+
+    # No config file found - show what we searched for
+    current = Path.cwd()
+    searched_dirs = [current, *current.parents]
+    # Stop at git root if found
+    for i, directory in enumerate(searched_dirs):
+        if (directory / '.git').exists():
+            searched_dirs = searched_dirs[: i + 1]
+            break
+
+    # Show example paths from the current directory
     config_candidates = [
-        Path.cwd() / 'uv-toolbox.yaml',
-        Path.cwd() / 'uv-toolbox.json',
-        Path.cwd() / 'uv-toolbox.toml',
+        current / 'uv-toolbox.yaml',
+        current / 'uv-toolbox.json',
+        current / 'uv-toolbox.toml',
+        current / 'pyproject.toml',
     ]
-    pyproject_path = Path.cwd() / 'pyproject.toml'
-    has_pyproject_config = _pyproject_has_uv_toolbox_config(pyproject_path)
-    if not any(candidate.exists() for candidate in config_candidates) and not has_pyproject_config:
-        searched = [*config_candidates, pyproject_path]
-        raise MissingConfigFileError(searched)
+    raise MissingConfigFileError(config_candidates)
 
 
 @contextmanager
