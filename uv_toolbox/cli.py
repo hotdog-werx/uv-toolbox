@@ -43,13 +43,13 @@ def install(
             help='Path to the directory where virtual environments are stored.',
         ),
     ] = None,
-    force: Annotated[
+    clear: Annotated[
         bool,
         typer.Option(
             ...,
-            '--force',
-            '-f',
-            help='Force re-creation of the virtual environment.',
+            '--clear',
+            '-c',
+            help='Clear and recreate the virtual environments.',
         ),
     ] = False,
 ) -> None:
@@ -57,7 +57,7 @@ def install(
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     for env in settings.environments:
         try:
-            initialize_virtualenv(env=env, settings=settings, force=force)
+            initialize_virtualenv(env=env, settings=settings, clear=clear)
         except UvToolboxError as exc:
             typer.secho(str(exc), err=True, fg=typer.colors.RED)
             raise typer.Exit(code=1) from exc
@@ -83,13 +83,13 @@ def exec_(
             help='Environment name (required when multiple environments exist).',
         ),
     ] = None,
-    force_reinitialize: Annotated[
+    clear: Annotated[
         bool,
         typer.Option(
             ...,
-            '--force-reinitialize',
-            '-f',
-            help='Force re-initialization of the virtual environment.',
+            '--clear',
+            '-c',
+            help='Clear and recreate the virtual environment.',
         ),
     ] = False,
     venv_path: Annotated[
@@ -110,11 +110,11 @@ def exec_(
             env_name=env_name,
         )
 
-        if not env.venv_path(settings=settings).exists() or force_reinitialize:
+        if not env.venv_path(settings=settings).exists() or clear:
             initialize_virtualenv(
                 env=env,
                 settings=settings,
-                force=force_reinitialize,
+                clear=clear,
             )
 
         run_checked(

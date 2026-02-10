@@ -69,21 +69,19 @@ def initialize_virtualenv(
     env: UvToolboxEnvironment,
     settings: UvToolboxSettings,
     *,
-    force: bool = False,
+    clear: bool = False,
 ) -> None:
     """Create and set up the virtual environment for the given environment.
 
     Args:
         env: The UV toolbox environment to initialize.
         settings: The UV toolbox settings.
-        force: If True, recreate the virtual environment even if it exists.
+        clear: If True, clear and recreate the virtual environment.
     """
     venv_path = env.venv_path(settings=settings)
 
-    # Only create venv if it doesn't exist or force is True
-    if not venv_path.exists() or force:
-        # Use --clear flag when forcing recreation of existing venv
-        clear = force and venv_path.exists()
-        create_virtualenv(env=env, settings=settings, clear=clear)
+    # Only create venv if it doesn't exist or clear is True
+    if not venv_path.exists() or clear:
+        create_virtualenv(env=env, settings=settings, clear=True)
 
     install_requirements(env=env, settings=settings)
