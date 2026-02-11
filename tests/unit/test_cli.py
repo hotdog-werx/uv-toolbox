@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -14,6 +13,8 @@ from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
 from uv_toolbox.settings import UvToolboxSettings
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pytest_mock import MockerFixture
 
 runner = CliRunner()
