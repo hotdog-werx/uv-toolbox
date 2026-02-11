@@ -72,7 +72,7 @@ environments:
     requirements: |
       ruff==0.13.0
       black
-    executables: [ruff, black]  # List executables to expose
+    executables: [ruff, black] # List executables to expose
   - name: testing
     requirements: pytest
     executables: [pytest]
@@ -92,7 +92,8 @@ black .
 pytest
 ```
 
-**Note**: Only executables listed in the `executables` field will be added to PATH. This prevents Python/pip from the venv from polluting your PATH.
+**Note**: Only executables listed in the `executables` field will be added to
+PATH. This prevents Python/pip from the venv from polluting your PATH.
 
 ## Configuration Options
 
@@ -150,10 +151,12 @@ environments:
     requirements: |
       ruff==0.13.0
       black
-    executables: [ruff, black]  # Only these will be available via shims
+    executables: [ruff, black] # Only these will be available via shims
 ```
 
-This field is optional and only needed if you plan to use `uv-toolbox shim`. It gives you explicit control over which tools are added to PATH, preventing Python/pip from the venv from polluting your environment.
+This field is optional and only needed if you plan to use `uv-toolbox shim`. It
+gives you explicit control over which tools are added to PATH, preventing
+Python/pip from the venv from polluting your environment.
 
 ## Next Steps
 

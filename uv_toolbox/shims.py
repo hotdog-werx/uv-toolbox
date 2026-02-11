@@ -14,7 +14,7 @@ from uv_toolbox.utils import _venv_bin_path
 if typing.TYPE_CHECKING:
     from pathlib import Path
 
-    from uv_toolbox.settings import UvToolboxSettings
+    from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
 
 def _create_unix_shim(
@@ -139,6 +139,46 @@ def _create_shim_for_executable(
         _create_unix_shim(shim_path, target_path, venv_path)
 
 
+def _create_shims_for_environment(
+    env: UvToolboxEnvironment,
+    settings: UvToolboxSettings,
+) -> Path | None:
+    """Create shim directory for a single environment.
+
+    Args:
+        env: The environment to create shims for.
+        settings: The UV toolbox settings.
+
+    Returns:
+        Path to the shim directory if created, None otherwise.
+    """
+    venv_path = env.venv_path(settings=settings)
+
+    # Skip if venv doesn't exist yet
+    if not venv_path.exists():
+        return None
+
+    # Skip if no executables listed
+    if not env.executables:
+        return None
+
+    # Shim directory is inside the venv
+    shim_dir = venv_path / 'shims'
+    shim_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clear existing shims in this venv
+    for shim_file in shim_dir.iterdir():
+        if shim_file.is_file():
+            shim_file.unlink()
+
+    # Create shims for this environment's executables
+    bin_path = _venv_bin_path(venv_path)
+    for exe_name in env.executables:
+        _create_shim_for_executable(exe_name, venv_path, bin_path, shim_dir)
+
+    return shim_dir
+
+
 def create_shims(settings: UvToolboxSettings) -> list[Path]:
     """Create per-venv shim scripts for explicitly listed executables.
 
@@ -150,32 +190,9 @@ def create_shims(settings: UvToolboxSettings) -> list[Path]:
     """
     shim_dirs: list[Path] = []
 
-    # Create shims for each environment
     for env in settings.environments:
-        venv_path = env.venv_path(settings=settings)
-
-        # Skip if venv doesn't exist yet
-        if not venv_path.exists():
-            continue
-
-        # Skip if no executables listed
-        if not env.executables:
-            continue
-
-        # Shim directory is inside the venv
-        shim_dir = venv_path / 'shims'
-        shim_dir.mkdir(parents=True, exist_ok=True)
-
-        # Clear existing shims in this venv
-        for shim_file in shim_dir.iterdir():
-            if shim_file.is_file():
-                shim_file.unlink()
-
-        # Create shims for this environment's executables
-        bin_path = _venv_bin_path(venv_path)
-        for exe_name in env.executables:
-            _create_shim_for_executable(exe_name, venv_path, bin_path, shim_dir)
-
-        shim_dirs.append(shim_dir)
+        shim_dir = _create_shims_for_environment(env, settings)
+        if shim_dir is not None:
+            shim_dirs.append(shim_dir)
 
     return shim_dirs

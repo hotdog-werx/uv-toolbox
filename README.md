@@ -59,7 +59,7 @@ The `executables` field controls which tools are exposed via shims:
 environments:
   - name: formatting
     requirements: ruff==0.13.0
-    executables: [ruff]  # Only ruff will be available in PATH via shims
+    executables: [ruff] # Only ruff will be available in PATH via shims
 ```
 
 - **Optional**: Only needed if you want to use `uv-toolbox shim`
@@ -87,4 +87,6 @@ Add shim scripts to your PATH for direct tool access:
 eval "$(uv-toolbox shim)"
 ```
 
-This creates wrapper scripts for executables listed in the `executables` field of each environment. Only explicitly listed executables are exposed, preventing Python/pip from polluting your PATH.
+This creates wrapper scripts for executables listed in the `executables` field
+of each environment. Only explicitly listed executables are exposed, preventing
+Python/pip from polluting your PATH.
