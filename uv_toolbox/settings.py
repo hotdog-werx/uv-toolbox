@@ -158,6 +158,7 @@ class UvToolboxSettings(BaseSettings):
     config_file: Path | None = None
     venv_path: Path = Path.home() / '.cache' / 'uv-toolbox'
     default_environment: str | None = None
+    show_commands: bool = False
     environments: typing.Annotated[
         list[UvToolboxEnvironment],
         Field(min_length=1),

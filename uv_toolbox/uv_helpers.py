@@ -28,7 +28,7 @@ def create_virtualenv(
         extra_env=env.process_env(settings=settings),
         capture_stdout=False,
         capture_stderr=False,
-        show_command=True,
+        show_command=settings.show_commands,
     )
 
 
@@ -64,7 +64,7 @@ def install_requirements(
             extra_env=env.process_env(settings=settings),
             capture_stdout=False,
             capture_stderr=False,
-            show_command=True,
+            show_command=settings.show_commands,
         )
 
     if temp_dir is not None:
