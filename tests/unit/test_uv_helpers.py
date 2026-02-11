@@ -23,6 +23,7 @@ def _make_settings(
     return UvToolboxSettings.model_validate(
         {
             'venv_path': tmp_path / '.uv-toolbox',
+            'show_commands': False,
             'environments': [
                 {
                     'name': env.name,

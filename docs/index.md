@@ -35,10 +35,12 @@ environments:
     requirements: |
       ruff==0.13.0
       black==24.1.0
+    executables: [ruff, black]
   - name: testing
     requirements: |
       pytest==8.0.0
       pytest-cov==4.0.0
+    executables: [pytest]
 ```
 
 ```bash

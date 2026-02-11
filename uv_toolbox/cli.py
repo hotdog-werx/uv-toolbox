@@ -8,7 +8,8 @@ import typer
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
 from uv_toolbox.process import run_checked
 from uv_toolbox.settings import UvToolboxSettings
-from uv_toolbox.utils import _filter_nulls, _venv_bin_path
+from uv_toolbox.shims import create_shims
+from uv_toolbox.utils import _filter_nulls
 from uv_toolbox.uv_helpers import initialize_virtualenv
 
 app = typer.Typer(help='CLI tool for managing UV tool environments.')
@@ -118,7 +119,7 @@ def exec_(
             )
 
         run_checked(
-            args=['uv', 'run', '--active', '--', *command],
+            args=['uv', 'run', '--isolated', '--', *command],
             capture_stdout=False,
             capture_stderr=False,
             extra_env=env.process_env(settings=settings),
@@ -141,11 +142,21 @@ def shim(
         ),
     ] = None,
 ) -> None:
-    """Emit shell code to prepend environment bin paths to PATH."""
+    """Create shim scripts for tools and emit shell code to add shims to PATH."""
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
-    shim_paths = [str(_venv_bin_path(env.venv_path(settings=settings))) for env in settings.environments]
-    shim_path = os.pathsep.join(shim_paths)
-    typer.echo(f'export PATH="{shim_path}{os.pathsep}$PATH"')
+
+    try:
+        shim_dirs = create_shims(settings=settings)
+        if shim_dirs:
+            # Join all shim directories in config order
+            shim_path = os.pathsep.join(str(d) for d in shim_dirs)
+            typer.echo(f'export PATH="{shim_path}{os.pathsep}$PATH"')
+        else:
+            # No shims created (no venvs or no executables)
+            typer.echo('# No shims to add to PATH')
+    except UvToolboxError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
 
 
 def main() -> None:

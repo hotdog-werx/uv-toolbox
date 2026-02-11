@@ -70,12 +70,15 @@ class UvToolboxEnvironment(BaseModel):
             requirements_file).
         requirements_file: A path to a pip requirements file (mutually
             exclusive with requirements).
+        executables: List of executable names to create shims for. If not
+            specified, no shims will be created for this environment.
     """
 
     name: str
     requirements: str | None = None
     requirements_file: Path | None = None
     environment: dict[str, str] = {}
+    executables: list[str] = []
 
     model_config = ConfigDict(
         alias_generator=_ALIASES,

@@ -12,10 +12,12 @@ environments:
     requirements: |
       ruff==0.13.0
       black
+    executables: [ruff, black]
   - name: env2
     requirements: |
       isort
       flake8
+    executables: [isort, flake8]
 ```
 
 ### Configuration Options
@@ -49,6 +51,21 @@ venv_path: .uv-toolbox
 - Projects with identical requirements automatically share the same venv
 - Config files are discovered by walking up the directory tree
 
+**Executables:**
+
+The `executables` field controls which tools are exposed via shims:
+
+```yaml
+environments:
+  - name: formatting
+    requirements: ruff==0.13.0
+    executables: [ruff]  # Only ruff will be available in PATH via shims
+```
+
+- **Optional**: Only needed if you want to use `uv-toolbox shim`
+- **Explicit control**: List exactly which executables to expose
+- **Prevents PATH pollution**: Python/pip from the venv won't be added to PATH
+
 ## Usage
 
 Install environments:
@@ -64,8 +81,10 @@ otherwise pass `--env`):
 uv-toolbox exec --env env1 -- ruff --version
 ```
 
-Emit a POSIX shell snippet that prepends all environment bin paths to `PATH`:
+Add shim scripts to your PATH for direct tool access:
 
 ```bash
 eval "$(uv-toolbox shim)"
 ```
+
+This creates wrapper scripts for executables listed in the `executables` field of each environment. Only explicitly listed executables are exposed, preventing Python/pip from polluting your PATH.

@@ -62,7 +62,23 @@ uv-toolbox exec -- ruff check .
 
 ### Add to PATH
 
-Add all tool environments to your PATH:
+To make tools available directly in your PATH, you need to:
+
+1. Specify which executables to expose in your config:
+
+```yaml
+environments:
+  - name: formatting
+    requirements: |
+      ruff==0.13.0
+      black
+    executables: [ruff, black]  # List executables to expose
+  - name: testing
+    requirements: pytest
+    executables: [pytest]
+```
+
+2. Add shims to your PATH:
 
 ```bash
 eval "$(uv-toolbox shim)"
@@ -75,6 +91,8 @@ ruff check .
 black .
 pytest
 ```
+
+**Note**: Only executables listed in the `executables` field will be added to PATH. This prevents Python/pip from the venv from polluting your PATH.
 
 ## Configuration Options
 
@@ -117,9 +135,25 @@ Set environment variables for specific environments:
 environments:
   - name: testing
     requirements: pytest
+    executables: [pytest]
     environment:
       PYTEST_ADDOPTS: '-v --tb=short'
 ```
+
+### Executables
+
+Specify which executables to expose via shims:
+
+```yaml
+environments:
+  - name: formatting
+    requirements: |
+      ruff==0.13.0
+      black
+    executables: [ruff, black]  # Only these will be available via shims
+```
+
+This field is optional and only needed if you plan to use `uv-toolbox shim`. It gives you explicit control over which tools are added to PATH, preventing Python/pip from the venv from polluting your environment.
 
 ## Next Steps
 
