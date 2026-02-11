@@ -11,11 +11,11 @@ def test_integration_exec_installs_project_dependencies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that uvtb exec causes uv to install project dependencies in venv.
+    """Test that uvtb exec directly calls commands from venv without reinstalling.
 
-    This test demonstrates that when running `uvtb exec -- myproject-cli`,
-    uv will automatically install dependencies into the venv, including
-    the project itself.
+    This test demonstrates that after running `uvtb install`, when we then run
+    `uvtb exec -- myproject-cli`, it directly executes the command from the venv
+    bin directory without triggering any additional installation from uv.
     """
     # Create the project directory structure
     project_dir = tmp_path / 'myproject'
@@ -112,21 +112,21 @@ def test_integration_exec_installs_project_dependencies(
     # Verify the output is what we expect
     assert 'hello-world' in exec_result.stdout, f'Expected "hello-world" in output, got:\n{exec_result.stdout}'
 
-    # THE KEY EVIDENCE: Check stderr for proof that uv installed packages!
-    # When uv run --active executes, it detects the project and installs it + dependencies.
-    # This will show messages about installing packages.
-    assert 'Installed' in exec_result.stderr or 'installed' in exec_result.stderr, (
-        f'Expected to see installation activity in stderr, but got:\n{exec_result.stderr}'
+    # THE FIX VERIFICATION: Check that NO installation happened!
+    # With the fix, we directly call commands from the venv bin directory
+    # instead of using 'uv run --active', so there should be no installation activity.
+    assert 'Installed' not in exec_result.stderr and 'installed' not in exec_result.stderr, (
+        f'Did not expect installation activity in stderr, but got:\n{exec_result.stderr}'
     )
 
-    # The key demonstration: When uvtb exec runs with uv run --active,
-    # uv will automatically install any missing dependencies into the venv.
-    # This happens even after uvtb install has already run, because uv run
-    # detects the project's pyproject.toml and ensures all dependencies are installed.
-
-    # Evidence that uv installed the project:
-    # 1. The CLI worked (meaning myproject was installed and available)
-    # 2. Check that myproject package is actually in the venv
+    # The key demonstration: With the fix, uvtb exec directly calls commands
+    # from the venv bin directory instead of using 'uv run --active'.
+    # This avoids triggering automatic installation by uv.
+    
+    # Evidence that everything still works:
+    # 1. The CLI worked (meaning myproject was installed by uvtb install)
+    # 2. No installation activity happened during exec
+    # 3. All tools are available from the venv
 
     # Verify the project was installed by checking if we can import it
     import_check = subprocess.run(
@@ -159,9 +159,8 @@ def test_integration_exec_installs_project_dependencies(
     assert ruff_check.returncode == 0, 'ruff should be available in the environment'
     assert 'ruff' in ruff_check.stdout.lower(), f'Expected ruff version in output, got:\n{ruff_check.stdout}'
 
-    # CRITICAL VERIFICATION: Check that pytest (from dev dependencies) was installed!
-    # This proves that when uv run --active executes, it installs the project
-    # WITH its optional dependencies (dev group) into the venv.
+    # CRITICAL VERIFICATION: Check that pytest (from dev dependencies) is available!
+    # This proves that uvtb install properly installed the project with its dependencies.
     pytest_check = subprocess.run(
         ['uvtb', 'exec', '--', 'pytest', '--version'],
         check=False,
@@ -174,6 +173,5 @@ def test_integration_exec_installs_project_dependencies(
     )
     assert 'pytest' in pytest_check.stdout.lower(), f'Expected pytest version in output, got:\n{pytest_check.stdout}'
 
-    # This is the proof: pytest was NOT explicitly listed in uv-toolbox.yaml,
-    # it's only in the dev dependencies of myproject's pyproject.toml.
-    # Yet it's available! This means uv installed the project when we ran exec.
+    # Verify that this also didn't trigger installation
+    assert 'Installed' not in pytest_check.stderr and 'installed' not in pytest_check.stderr

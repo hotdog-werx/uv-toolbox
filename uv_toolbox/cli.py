@@ -117,13 +117,31 @@ def exec_(
                 clear=clear,
             )
 
-        run_checked(
-            args=['uv', 'run', '--active', '--', *command],
-            capture_stdout=False,
-            capture_stderr=False,
-            extra_env=env.process_env(settings=settings),
-            show_command=settings.show_commands,
-        )
+        # Instead of using 'uv run --active' which triggers automatic installation,
+        # directly execute the command from the venv's bin directory.
+        # This assumes everything is already installed by 'uvtb install'.
+        venv_bin = _venv_bin_path(env.venv_path(settings=settings))
+        command_path = venv_bin / command[0]
+        
+        # If the command exists in the venv bin, use it directly
+        # Otherwise fall back to running it as-is (could be a system command)
+        if command_path.exists():
+            run_checked(
+                args=[str(command_path), *command[1:]],
+                capture_stdout=False,
+                capture_stderr=False,
+                extra_env=env.process_env(settings=settings),
+                show_command=settings.show_commands,
+            )
+        else:
+            # Command not in venv bin, run with full PATH from env
+            run_checked(
+                args=command,
+                capture_stdout=False,
+                capture_stderr=False,
+                extra_env=env.process_env(settings=settings),
+                show_command=settings.show_commands,
+            )
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc

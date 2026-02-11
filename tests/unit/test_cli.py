@@ -78,7 +78,10 @@ def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     init_mock.assert_called_once()
     run_mock.assert_called_once()
     args = run_mock.call_args.kwargs['args']
-    assert args == ['uv', 'run', '--active', '--', 'ruff', '--version']
+    # With the fix, we now directly call commands from venv bin
+    # The actual path will be /path/to/venv/bin/ruff
+    assert args[0].endswith('ruff')
+    assert args[1:] == ['--version']
     extra_env = run_mock.call_args.kwargs['extra_env']
     # Check that VIRTUAL_ENV is in the venv_root (content-addressed subdir)
     assert extra_env['VIRTUAL_ENV'].startswith(str(venv_root))
