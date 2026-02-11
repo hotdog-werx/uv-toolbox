@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-import stat
 from typing import TYPE_CHECKING
 
+from tests.utils import create_fake_venv
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 from uv_toolbox.shims import create_shims
 from uv_toolbox.utils import _venv_bin_path
@@ -34,26 +34,11 @@ def _make_settings(
     )
 
 
-def _create_fake_venv(venv_path: Path, tools: list[str]) -> None:
-    """Create a fake venv with specified tool executables."""
-    bin_path = _venv_bin_path(venv_path)
-    bin_path.mkdir(parents=True, exist_ok=True)
-
-    for tool in tools:
-        tool_path = bin_path / tool
-        tool_path.write_text('#!/usr/bin/env python\nprint("fake tool")\n')
-        # Make executable on Unix
-        if os.name != 'nt':
-            tool_path.chmod(
-                tool_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
-            )
-
-
 def test_create_shims_creates_per_venv_shim_directories(tmp_path: Path) -> None:
     env = UvToolboxEnvironment(name='env1', requirements='ruff', executables=['ruff'])
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
-    _create_fake_venv(venv_path, ['ruff'])
+    create_fake_venv(venv_path, ['ruff'])
 
     shim_dirs = create_shims(settings=settings)
 
@@ -71,7 +56,7 @@ def test_create_shims_creates_shims_for_listed_executables(tmp_path: Path) -> No
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
-    _create_fake_venv(venv_path, ['ruff', 'black', 'pytest'])
+    create_fake_venv(venv_path, ['ruff', 'black', 'pytest'])
 
     shim_dirs = create_shims(settings=settings)
     shim_dir = shim_dirs[0]
@@ -105,8 +90,8 @@ def test_create_shims_returns_multiple_shim_dirs_in_config_order(
     )
     settings = _make_settings(tmp_path, envs=[env1, env2])
 
-    _create_fake_venv(env1.venv_path(settings=settings), ['ruff'])
-    _create_fake_venv(env2.venv_path(settings=settings), ['black'])
+    create_fake_venv(env1.venv_path(settings=settings), ['ruff'])
+    create_fake_venv(env2.venv_path(settings=settings), ['black'])
 
     shim_dirs = create_shims(settings=settings)
 
@@ -131,8 +116,8 @@ def test_create_shims_allows_duplicate_executables_across_envs(
     )
     settings = _make_settings(tmp_path, envs=[env1, env2])
 
-    _create_fake_venv(env1.venv_path(settings=settings), ['ruff'])
-    _create_fake_venv(env2.venv_path(settings=settings), ['ruff'])
+    create_fake_venv(env1.venv_path(settings=settings), ['ruff'])
+    create_fake_venv(env2.venv_path(settings=settings), ['ruff'])
 
     shim_dirs = create_shims(settings=settings)
 
@@ -154,7 +139,7 @@ def test_create_shims_clears_old_shims(tmp_path: Path) -> None:
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
-    _create_fake_venv(venv_path, ['ruff', 'black', 'mypy'])
+    create_fake_venv(venv_path, ['ruff', 'black', 'mypy'])
 
     # Create initial shims
     shim_dirs = create_shims(settings=settings)
@@ -197,7 +182,7 @@ def test_create_shims_skips_envs_with_empty_executables(tmp_path: Path) -> None:
     env = UvToolboxEnvironment(name='env1', requirements='ruff', executables=[])
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
-    _create_fake_venv(venv_path, ['ruff', 'black'])
+    create_fake_venv(venv_path, ['ruff', 'black'])
 
     shim_dirs = create_shims(settings=settings)
 
@@ -213,7 +198,7 @@ def test_create_shims_skips_missing_executables(tmp_path: Path) -> None:
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
-    _create_fake_venv(venv_path, ['ruff', 'black'])
+    create_fake_venv(venv_path, ['ruff', 'black'])
 
     shim_dirs = create_shims(settings=settings)
     shim_dir = shim_dirs[0]
@@ -241,7 +226,7 @@ def test_unix_shim_contains_correct_paths(tmp_path: Path) -> None:
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
-    _create_fake_venv(venv_path, ['ruff'])
+    create_fake_venv(venv_path, ['ruff'])
 
     shim_dirs = create_shims(settings=settings)
     shim_content = (shim_dirs[0] / 'ruff').read_text()

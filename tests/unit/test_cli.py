@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import os
-import stat
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
+from tests.utils import create_fake_venv
 from uv_toolbox import cli as cli_module
 from uv_toolbox.cli import app
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
 from uv_toolbox.settings import UvToolboxSettings
-from uv_toolbox.utils import _venv_bin_path
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -45,21 +44,6 @@ def _write_config(
     config_path = tmp_path / 'uvtb.yaml'
     config_path.write_text(contents)
     return config_path
-
-
-def _create_fake_venv(venv_path: Path, tools: list[str]) -> None:
-    """Create a fake venv with specified tool executables."""
-    bin_path = _venv_bin_path(venv_path)
-    bin_path.mkdir(parents=True, exist_ok=True)
-
-    for tool in tools:
-        tool_path = bin_path / tool
-        tool_path.write_text('#!/usr/bin/env python\nprint("fake tool")\n')
-        # Make executable on Unix
-        if os.name != 'nt':
-            tool_path.chmod(
-                tool_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
-            )
 
 
 def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
@@ -157,8 +141,8 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
     )
 
     # Create fake venvs
-    _create_fake_venv(settings.environments[0].venv_path(settings=settings), ['ruff'])
-    _create_fake_venv(settings.environments[1].venv_path(settings=settings), ['black'])
+    create_fake_venv(settings.environments[0].venv_path(settings=settings), ['ruff'])
+    create_fake_venv(settings.environments[1].venv_path(settings=settings), ['black'])
 
     result = runner.invoke(app, ['--config', str(config_path), 'shim'])
 
