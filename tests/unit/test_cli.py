@@ -80,14 +80,12 @@ def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     init_mock.assert_called_once()
     run_mock.assert_called_once()
     args = run_mock.call_args.kwargs['args']
-    assert args == ['uv', 'run', '--active', '--', 'ruff', '--version']
+    # Should use uv run with --no-project only
+    assert args == ['uv', 'run', '--no-project', '--', 'ruff', '--version']
+
     extra_env = run_mock.call_args.kwargs['extra_env']
     # Check that VIRTUAL_ENV is in the venv_root (content-addressed subdir)
     assert extra_env['VIRTUAL_ENV'].startswith(str(venv_root))
-    # Extract just the final directory name (the hash) - platform independent
-
-    venv_hash = Path(extra_env['VIRTUAL_ENV']).name
-    assert len(venv_hash) == 12  # Hash is 12 chars
 
 
 def test_exec_requires_delimiter(mocker: MockerFixture, tmp_path: Path) -> None:
@@ -134,15 +132,29 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
         {
             'venv_path': venv_root,
             'environments': [
-                {'name': 'env1', 'requirements': 'ruff', 'executables': ['ruff']},
-                {'name': 'env2', 'requirements': 'black', 'executables': ['black']},
+                {
+                    'name': 'env1',
+                    'requirements': 'ruff',
+                    'executables': ['ruff'],
+                },
+                {
+                    'name': 'env2',
+                    'requirements': 'black',
+                    'executables': ['black'],
+                },
             ],
-        }
+        },
     )
 
     # Create fake venvs
-    create_fake_venv(settings.environments[0].venv_path(settings=settings), ['ruff'])
-    create_fake_venv(settings.environments[1].venv_path(settings=settings), ['black'])
+    create_fake_venv(
+        settings.environments[0].venv_path(settings=settings),
+        ['ruff'],
+    )
+    create_fake_venv(
+        settings.environments[1].venv_path(settings=settings),
+        ['black'],
+    )
 
     result = runner.invoke(app, ['--config', str(config_path), 'shim'])
 

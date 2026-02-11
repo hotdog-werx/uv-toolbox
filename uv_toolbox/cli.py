@@ -118,8 +118,10 @@ def exec_(
                 clear=clear,
             )
 
+        # Use uv run with --no-project to prevent automatic project detection
+        # VIRTUAL_ENV is set via extra_env to specify which venv to use
         run_checked(
-            args=['uv', 'run', '--active', '--', *command],
+            args=['uv', 'run', '--no-project', '--', *command],
             capture_stdout=False,
             capture_stderr=False,
             extra_env=env.process_env(settings=settings),

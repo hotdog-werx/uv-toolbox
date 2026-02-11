@@ -35,7 +35,11 @@ def _make_settings(
 
 
 def test_create_shims_creates_per_venv_shim_directories(tmp_path: Path) -> None:
-    env = UvToolboxEnvironment(name='env1', requirements='ruff', executables=['ruff'])
+    env = UvToolboxEnvironment(
+        name='env1',
+        requirements='ruff',
+        executables=['ruff'],
+    )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
     create_fake_venv(venv_path, ['ruff'])
@@ -48,7 +52,9 @@ def test_create_shims_creates_per_venv_shim_directories(tmp_path: Path) -> None:
     assert shim_dirs[0].is_dir()
 
 
-def test_create_shims_creates_shims_for_listed_executables(tmp_path: Path) -> None:
+def test_create_shims_creates_shims_for_listed_executables(
+    tmp_path: Path,
+) -> None:
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
