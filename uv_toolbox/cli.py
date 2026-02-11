@@ -119,7 +119,7 @@ def exec_(
             )
 
         run_checked(
-            args=['uv', 'run', '--isolated', '--', *command],
+            args=['uv', 'run', '--active', '--', *command],
             capture_stdout=False,
             capture_stderr=False,
             extra_env=env.process_env(settings=settings),

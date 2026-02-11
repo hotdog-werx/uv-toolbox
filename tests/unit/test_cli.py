@@ -80,7 +80,7 @@ def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     init_mock.assert_called_once()
     run_mock.assert_called_once()
     args = run_mock.call_args.kwargs['args']
-    assert args == ['uv', 'run', '--isolated', '--', 'ruff', '--version']
+    assert args == ['uv', 'run', '--active', '--', 'ruff', '--version']
     extra_env = run_mock.call_args.kwargs['extra_env']
     # Check that VIRTUAL_ENV is in the venv_root (content-addressed subdir)
     assert extra_env['VIRTUAL_ENV'].startswith(str(venv_root))
