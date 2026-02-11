@@ -39,7 +39,7 @@ jobs:
         run: poe check-complexity
 
       - name: Run type check
-        run: poe check-basedpyright
+        run: poe check-ty
 
       - name: Run coverage check
         run: poe check-coverage
