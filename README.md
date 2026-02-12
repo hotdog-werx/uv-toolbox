@@ -1,6 +1,6 @@
 # uv-toolbox
 
-[![CI](https://github.com/hotdog-werx/uv-toolbox/actions/workflows/ci.yml/badge.svg)](https://github.com/hotdog-werx/uv-toolbox/actions/workflows/ci.yml)
+[![CI](https://github.com/hotdog-werx/uv-toolbox/actions/workflows/ci-checks.yaml/badge.svg)](https://github.com/hotdog-werx/uv-toolbox/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/uv-toolbox.svg)](https://pypi.org/project/uv-toolbox/)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
