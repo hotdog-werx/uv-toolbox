@@ -1,0 +1,47 @@
+name: Finalize release
+
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    name: Finalize release
+    runs-on: ubuntu-latest
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install mise tools
+        uses: jdx/mise-action@v3
+
+      - name: Releez finalize
+        id: releez
+        uses: hotdog-werx/releez-finalize-action@v0
+
+      - name: Set build version
+        run: uv version ${{ steps.releez.outputs.pep440-versions }} --frozen
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_URL: ${{ vars.PYPI_PUBLISH_URL }}
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_PUBLISH_TOKEN }}
+        run: uv publish dist/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.releez.outputs.release-version }}
+          body: ${{ steps.releez.outputs.release-notes }}

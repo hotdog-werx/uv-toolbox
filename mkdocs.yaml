@@ -1,0 +1,64 @@
+site_name: hotdog-werx/uv-toolbox
+site_description: Python tool environment manager
+site_url: https://hotdog-werx.github.io/uv-toolbox
+repo_url: https://github.com/hotdog-werx/uv-toolbox
+repo_name: hotdog-werx/uv-toolbox
+
+nav:
+  - Getting Started:
+      - Quick Start: quick-start.md
+  # - Configuration:
+  #     # - Overview: wip.md
+  #     - Context: configuration/context.md
+  #     # - Overrides: wip.md
+  #     # - Anchors: wip.md
+
+# Configuration
+theme:
+  name: material
+  features:
+    - announce.dismiss
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.footnote.tooltips
+    - content.tabs.link
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+  palette:
+    - media: '(prefers-color-scheme: light)'
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: lucide/sun
+        name: Switch to dark mode
+    - media: '(prefers-color-scheme: dark)'
+      scheme: slate
+      primary: indigo
+      accent: orange
+      toggle:
+        icon: lucide/moon-star
+        name: Switch to light mode
+  # favicon: assets/zensical.png
+  # logo: assets/zensical.svg
+  icon:
+    tag:
+      default: lucide/hash
+
+# Plugins
+plugins:
+  - search
+  - tags
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/hotdog-werx

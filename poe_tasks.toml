@@ -12,7 +12,7 @@ ci-checks.help = "run all checks for CI"
 ci-checks.sequence = [
   "check-dprint",
   "check-python",
-  "check-basedpyright",
+  "check-ty",
   "check-complexity",
   "check-coverage",
 ]

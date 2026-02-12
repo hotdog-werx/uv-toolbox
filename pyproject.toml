@@ -1,34 +1,60 @@
 [project]
 name = "uv-toolbox"
-description = "tool management with uv"
-authors = [{ name = "hotdog-werx" }]
+description = "Manage Python tool environments with declarative configuration and content-addressed storage."
 readme = "README.md"
-license = 'MIT'
 requires-python = ">=3.11"
 version = "0.0.0.dev0"
+license = "MIT"
+authors = [{ name = "James Trousdale" }]
+keywords = [
+  "uv",
+  "virtual-environment",
+  "venv",
+  "tools",
+  "python",
+  "dependency-management",
+  "cli",
+  "content-addressed",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Systems Administration",
+]
 
-dependencies = []
+dependencies = [
+  "typer ==0.21.1",
+  "pydantic >=2.7.0, <3",
+  "pydantic-settings >=2.7.0, <3",
+  'PyYAML >=6,<7',
+]
 
-# [project.scripts]
-# uv_toolbox = "uv_toolbox.cli.uv_toolbox:main"
+[project.urls]
+Homepage = "https://github.com/hotdog-werx/uv-toolbox"
+Repository = "https://github.com/hotdog-werx/uv-toolbox"
+"Bug Tracker" = "https://github.com/hotdog-werx/uv-toolbox/issues"
+Changelog = "https://github.com/hotdog-werx/uv-toolbox/blob/master/CHANGELOG.md"
+
+[project.scripts]
+uv-toolbox = "uv_toolbox.cli:main"
+uvtb = "uv_toolbox.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
 
-[tool]
-pyright.extends = ".pkglink/.codeguide/configs/pyrightconfig.json"
+[tool.ruff]
+extend = "./.pkglink/.codeguide/configs/ruff.toml"
 
 [tool.releez]
 create-pr = true
 run-changelog-format = true
-hooks = { changelog-format = [
-  "mise",
-  "exec",
-  "--",
-  "poe",
-  "format-dprint",
-  "{changelog}",
-] }
+hooks = { changelog-format = ["mise", "exec", "--", "poe", "format-dprint", "{changelog}"] }
 
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]

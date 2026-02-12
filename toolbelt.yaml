@@ -4,4 +4,4 @@ include:
 variables:
   TB_COVERAGE_CONFIG: .pkglink/.codeguide/configs/coveragerc.toml
   TB_COVERAGE_VERBOSE: vv
-  TB_PROJECT_SOURCE: hotlog
+  TB_PROJECT_SOURCE: uv_toolbox
