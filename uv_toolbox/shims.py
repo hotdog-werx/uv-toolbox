@@ -29,9 +29,10 @@ def _create_unix_shim(
         target_path: Path to the actual executable.
         venv_path: Path to the virtual environment.
     """
+    python_exe = venv_path / 'bin' / 'python'
     script = f"""#!/usr/bin/env bash
-export VIRTUAL_ENV="{venv_path}"
-exec "{target_path}" "$@"
+VIRTUAL_ENV="{venv_path}"
+exec uv run --no-project --python "{python_exe}" -- "{target_path}" "$@"
 """
     shim_path.write_text(script)
     # Make executable
@@ -54,9 +55,10 @@ def _create_windows_shim(
     """
     # Create .bat file
     bat_path = shim_path.with_suffix('.bat')
+    python_exe = venv_path / 'Scripts' / 'python.exe'
     script = f"""@echo off
 set VIRTUAL_ENV={venv_path}
-"{target_path}" %*
+uv run --no-project --python "{python_exe}" -- "{target_path}" %*
 """
     bat_path.write_text(script)
 
