@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from textwrap import dedent
 from typing import TYPE_CHECKING
@@ -68,15 +69,18 @@ def test_integration_shim_runs_in_correct_venv(
     )
 
     # Extract the shim directory from the output
-    # Output format: export PATH="/path/to/shims:$PATH"
+    # Output format: export PATH="/path/to/shims:$PATH" (Unix) or export PATH="C:\path\to\shims;$PATH" (Windows)
+
     shim_path_line = shim_result.stdout.strip()
     assert shim_path_line.startswith('export PATH="')
 
-    # Parse out the shim directory
-    shim_dir = shim_path_line.split('"')[1].split(':')[0]
+    # Parse out the shim directory (handle both : and ; separators)
+    path_value = shim_path_line.split('"')[1]
+    shim_dir = path_value.split(os.pathsep)[0]
 
     # Step 3: Execute the python shim and verify it's using the venv's Python
-    python_shim = project_dir / shim_dir / 'python'
+    # On Windows, shims are .bat files
+    python_shim = project_dir / shim_dir / 'python.bat' if os.name == 'nt' else project_dir / shim_dir / 'python'
     assert python_shim.exists(), f'Python shim not found at {python_shim}'
 
     # Run a command through the shim to check sys.executable and import ruff
