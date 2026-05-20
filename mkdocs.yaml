@@ -7,6 +7,8 @@ repo_name: hotdog-werx/uv-toolbox
 nav:
   - Getting Started:
       - Quick Start: quick-start.md
+  - Integrations:
+      - mise: mise.md
   # - Configuration:
   #     # - Overview: wip.md
   #     - Context: configuration/context.md
