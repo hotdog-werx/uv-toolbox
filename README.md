@@ -80,6 +80,20 @@ Install environments:
 uv-toolbox install
 ```
 
+After the first install, a pinned lockfile is written alongside each venv.
+Subsequent installs sync from it via uv's local cache — no network, no
+re-resolution. To upgrade to newer versions:
+
+```bash
+uv-toolbox install --upgrade   # re-resolve and refresh the lockfile
+```
+
+Generate a committed repo lockfile with hashes for all platform variants:
+
+```bash
+uv-toolbox lock   # writes uv-toolbox.lock next to your config file
+```
+
 Run a command inside an environment (uses the configured default if set,
 otherwise pass `--env`):
 
@@ -96,3 +110,7 @@ eval "$(uv-toolbox shim)"
 This creates wrapper scripts for executables listed in the `executables` field
 of each environment. Only explicitly listed executables are exposed, preventing
 Python/pip from polluting your PATH.
+
+If you use [mise](https://mise.jdx.dev), the mise plugin handles PATH management
+automatically on every shell activation — see the
+[mise integration docs](docs/mise.md).

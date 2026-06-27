@@ -10,6 +10,7 @@ from tests.utils import create_fake_venv
 from uv_toolbox import cli as cli_module
 from uv_toolbox.cli import app
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
+from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
 from uv_toolbox.settings import UvToolboxSettings
 
 if TYPE_CHECKING:
@@ -323,3 +324,67 @@ def test_shim_handles_uv_toolbox_error(
 
     assert result.exit_code == 1
     assert 'Test error' in result.stderr
+
+
+# ── lock command ─────────────────────────────────────────────────────────────
+
+
+def test_lock_writes_lockfile(mocker: MockerFixture, tmp_path: Path) -> None:
+    venv_root = tmp_path / '.uv-toolbox'
+    config_path = _write_config(
+        tmp_path,
+        venv_path=venv_root,
+        envs=[('env1', 'ruff')],
+    )
+    lock_data = UvToolboxLock(
+        environments={'env1': EnvironmentLock(requirements='ruff==0.14.14\n')},
+    )
+
+    mocker.patch('uv_toolbox.cli.generate_lock', return_value=lock_data)
+    write_mock = mocker.patch('uv_toolbox.cli.write_lockfile')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'lock'])
+
+    assert result.exit_code == 0
+    write_mock.assert_called_once()
+    call_args = write_mock.call_args
+    assert call_args.args[0] is lock_data
+    assert call_args.args[1] == config_path.parent / 'uv-toolbox.lock'
+    assert 'Wrote' in result.stdout
+
+
+def test_lock_errors_without_config_file(mocker: MockerFixture) -> None:
+    # Patch settings to return lockfile_path=None (no config file known)
+    mocker.patch(
+        'uv_toolbox.cli.UvToolboxSettings.from_context',
+        return_value=UvToolboxSettings.model_validate(
+            {'environments': [{'name': 'env1', 'requirements': 'ruff'}]},
+        ),
+    )
+
+    result = runner.invoke(app, ['lock'])
+
+    assert result.exit_code == 1
+    assert 'Cannot write lockfile' in result.stderr
+
+
+def test_lock_handles_uv_toolbox_error(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    venv_root = tmp_path / '.uv-toolbox'
+    config_path = _write_config(
+        tmp_path,
+        venv_path=venv_root,
+        envs=[('env1', 'ruff')],
+    )
+
+    mocker.patch(
+        'uv_toolbox.cli.generate_lock',
+        side_effect=UvToolboxError('compile failed'),
+    )
+
+    result = runner.invoke(app, ['--config', str(config_path), 'lock'])
+
+    assert result.exit_code == 1
+    assert 'compile failed' in result.stderr

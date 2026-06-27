@@ -6,6 +6,8 @@ from typing import Annotated
 import typer
 
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
+from uv_toolbox.lock import generate_lock
+from uv_toolbox.lockfile import write_lockfile
 from uv_toolbox.process import run_checked
 from uv_toolbox.settings import UvToolboxSettings
 from uv_toolbox.shims import create_shims
@@ -53,15 +55,60 @@ def install(
             help='Clear and recreate the virtual environments.',
         ),
     ] = False,
+    upgrade: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            '--upgrade',
+            '-u',
+            help='Re-resolve dependencies and refresh the lockfile.',
+        ),
+    ] = False,
 ) -> None:
     """Install UV tool environments."""
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     for env in settings.environments:
         try:
-            initialize_virtualenv(env=env, settings=settings, clear=clear)
+            initialize_virtualenv(
+                env=env,
+                settings=settings,
+                clear=clear,
+                upgrade=upgrade,
+            )
         except UvToolboxError as exc:
             typer.secho(str(exc), err=True, fg=typer.colors.RED)
             raise typer.Exit(code=1) from exc
+
+
+@app.command(name='lock')
+def lock(
+    ctx: typer.Context,
+    venv_path: Annotated[
+        Path | None,
+        typer.Option(
+            ...,
+            '--venv-path',
+            help='Path to the directory where virtual environments are stored.',
+        ),
+    ] = None,
+) -> None:
+    """Generate or update uv-toolbox.lock with pinned, hash-verified requirements."""
+    settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
+    lockfile_path = settings.lockfile_path
+    if lockfile_path is None:
+        typer.secho(
+            'Cannot write lockfile: no config file location known.',
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    try:
+        lock_data = generate_lock(settings=settings)
+        write_lockfile(lock_data, lockfile_path)
+        typer.echo(f'Wrote {lockfile_path}')
+    except UvToolboxError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command(name='exec')
