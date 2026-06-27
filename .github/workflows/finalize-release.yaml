@@ -26,7 +26,9 @@ jobs:
 
       - name: Releez finalize
         id: releez
-        uses: hotdog-werx/releez-finalize-action@v0
+        uses: hotdog-werx/releez@v0
+        with:
+          mode: finalize
 
       - name: Set build version
         run: uv version ${{ steps.releez.outputs.pep440-versions }} --frozen
