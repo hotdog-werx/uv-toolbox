@@ -11,7 +11,6 @@ from uv_toolbox.uv_helpers import (
     create_virtualenv,
     initialize_virtualenv,
     install_requirements,
-    _install_from_resolved,
 )
 
 if TYPE_CHECKING:
@@ -48,6 +47,7 @@ def test_create_virtualenv_runs_uv_venv(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Calls `uv venv` with the content-addressed venv path and the environment's process env."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)
     run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked')
@@ -67,6 +67,7 @@ def test_create_virtualenv_with_clear_flag(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Appends `--clear` to the `uv venv` invocation when clear=True."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)
     run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked')
@@ -89,6 +90,7 @@ def test_install_requirements_uses_requirements_file_on_first_install(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Passes the requirements file path directly to `uv pip install --exact`, skipping temp file creation."""
     req_file = tmp_path / 'requirements.txt'
     req_file.write_text('ruff\n')
     env = UvToolboxEnvironment(name='env1', requirements_file=req_file)
@@ -125,9 +127,14 @@ def test_install_requirements_writes_lockfile_after_first_install(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    req_file = tmp_path / 'requirements.txt'
-    req_file.write_text('ruff\n')
-    env = UvToolboxEnvironment(name='env1', requirements_file=req_file)
+    """Writes inline requirements to a named temp file and passes it to uv.
+
+    Verifies the temp directory is cleaned up after the sync completes.
+    """
+    env = UvToolboxEnvironment(
+        name='env1',
+        requirements='ruff==0.13.1',
+    )
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)
     lockfile = _lockfile_path(venv_path)
@@ -188,7 +195,10 @@ def test_install_requirements_syncs_offline_when_lockfile_exists(
     lockfile.parent.mkdir(parents=True, exist_ok=True)
     lockfile.write_text('ruff==0.14.14')
 
-    run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked', return_value='')
+    run_mock = mocker.patch(
+        'uv_toolbox.uv_helpers.run_checked',
+        return_value='',
+    )
 
     install_requirements(env=env, settings=settings)
 
@@ -332,14 +342,18 @@ def test_install_requirements_uses_resolved_when_no_machine_lockfile(
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     env._resolved_requirements = 'ruff==0.14.14 \\\n    --hash=sha256:aaaa\n'
     settings = _make_settings(tmp_path, env=env)
-    venv_path = env.venv_path(settings=settings)
-    # No machine lockfile exists — should take the resolved path
 
     temp_dir = tmp_path / 'tmp'
     temp_dir.mkdir()
-    mocker.patch('uv_toolbox.uv_helpers.tempfile.mkdtemp', return_value=str(temp_dir))
+    mocker.patch(
+        'uv_toolbox.uv_helpers.tempfile.mkdtemp',
+        return_value=str(temp_dir),
+    )
     rmtree_mock = mocker.patch('uv_toolbox.uv_helpers.shutil.rmtree')
-    run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked', return_value='')
+    run_mock = mocker.patch(
+        'uv_toolbox.uv_helpers.run_checked',
+        return_value='',
+    )
 
     install_requirements(env=env, settings=settings)
 
@@ -368,7 +382,10 @@ def test_install_requirements_machine_lockfile_written_with_resolved_content(
 
     temp_dir = tmp_path / 'tmp'
     temp_dir.mkdir()
-    mocker.patch('uv_toolbox.uv_helpers.tempfile.mkdtemp', return_value=str(temp_dir))
+    mocker.patch(
+        'uv_toolbox.uv_helpers.tempfile.mkdtemp',
+        return_value=str(temp_dir),
+    )
     mocker.patch('uv_toolbox.uv_helpers.shutil.rmtree')
     mocker.patch('uv_toolbox.uv_helpers.run_checked', return_value='')
 
@@ -389,7 +406,10 @@ def test_install_requirements_prefers_machine_lockfile_over_resolved(
     lockfile.parent.mkdir(parents=True, exist_ok=True)
     lockfile.write_text('ruff==0.14.14')  # machine lockfile already present
 
-    run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked', return_value='')
+    run_mock = mocker.patch(
+        'uv_toolbox.uv_helpers.run_checked',
+        return_value='',
+    )
 
     install_requirements(env=env, settings=settings)
 
@@ -410,6 +430,7 @@ def test_initialize_virtualenv_calls_helpers_in_order(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Calls create_virtualenv before install_requirements."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)
     calls: list[str] = []
@@ -438,7 +459,7 @@ def test_initialize_virtualenv_calls_helpers_in_order(
 def test_initialize_virtualenv_skips_create_when_venv_exists_and_no_clear(
     mocker: MockerFixture,
     tmp_path: Path,
-    clear: bool,
+    clear: bool,  # noqa: FBT001
 ) -> None:
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)

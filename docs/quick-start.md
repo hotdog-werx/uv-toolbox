@@ -178,14 +178,15 @@ uv-toolbox lock
 ```
 
 This writes `uv-toolbox.lock` next to your config file. Commit it to version
-control — when `uv-toolbox.lock` is present, `uvtb install` uses the pre-resolved,
-hash-verified requirements automatically.
+control — when `uv-toolbox.lock` is present, `uvtb install` uses the
+pre-resolved, hash-verified requirements automatically.
 
 See [Locking](locking.md) for the full workflow.
 
 ## Next Steps
 
-- Learn about [locking](locking.md) — offline installs, team lockfiles, and upgrades
+- Learn about [locking](locking.md) — offline installs, team lockfiles, and
+  upgrades
 - Learn about [content-addressed storage](content-addressing.md)
 - See the [full configuration reference](configuration.md) (coming soon)
 - Check out [advanced usage patterns](advanced.md) (coming soon)

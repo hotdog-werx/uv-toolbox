@@ -69,7 +69,12 @@ def install(
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     for env in settings.environments:
         try:
-            initialize_virtualenv(env=env, settings=settings, clear=clear, upgrade=upgrade)
+            initialize_virtualenv(
+                env=env,
+                settings=settings,
+                clear=clear,
+                upgrade=upgrade,
+            )
         except UvToolboxError as exc:
             typer.secho(str(exc), err=True, fg=typer.colors.RED)
             raise typer.Exit(code=1) from exc
@@ -185,18 +190,27 @@ def shim(
             help='Path to the directory where virtual environments are stored.',
         ),
     ] = None,
+    *,
+    list_paths: Annotated[
+        bool,
+        typer.Option(
+            '--list-paths',
+            help='Print shim directories one per line instead of emitting shell code.',
+        ),
+    ] = False,
 ) -> None:
     """Create shim scripts for tools and emit shell code to add shims to PATH."""
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
 
     try:
         shim_dirs = create_shims(settings=settings)
-        if shim_dirs:
-            # Join all shim directories in config order
+        if list_paths:
+            for d in shim_dirs:
+                typer.echo(str(d))
+        elif shim_dirs:
             shim_path = os.pathsep.join(str(d) for d in shim_dirs)
             typer.echo(f'export PATH="{shim_path}{os.pathsep}$PATH"')
         else:
-            # No shims created (no venvs or no executables)
             typer.echo('# No shims to add to PATH')
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)

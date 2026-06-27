@@ -1,8 +1,9 @@
 # Locking
 
-`uv-toolbox` has two complementary locking mechanisms: a **machine lockfile** that
-speeds up repeated installs automatically, and a **repo lockfile** that you commit
-to version control for reproducible, hash-verified installs across the team.
+`uv-toolbox` has two complementary locking mechanisms: a **machine lockfile**
+that speeds up repeated installs automatically, and a **repo lockfile** that you
+commit to version control for reproducible, hash-verified installs across the
+team.
 
 ## Machine Lockfile (Automatic)
 
@@ -25,8 +26,8 @@ uvtb install  # warm cache: completes in milliseconds
 If the cache is cold (e.g. a fresh machine), `uvtb` falls back to an online sync
 automatically, then the cache is warm for next time.
 
-The machine lockfile is a sibling of the venv directory so `--clear` never deletes
-it.
+The machine lockfile is a sibling of the venv directory so `--clear` never
+deletes it.
 
 ### Upgrading
 
@@ -76,8 +77,8 @@ pinned versions with hashes for every supported platform wheel variant.
 
 - **Security**: Hash verification catches tampered or corrupted packages
 - **Reproducibility**: Everyone installs exactly the same packages, everywhere
-- **Deliberate upgrades**: Version changes require an explicit `uvtb lock` run and
-  a visible diff in version control
+- **Deliberate upgrades**: Version changes require an explicit `uvtb lock` run
+  and a visible diff in version control
 - **Cross-platform**: Hashes for all platform variants are pre-computed, so any
   machine can verify installs without network access to fetch metadata
 
@@ -110,13 +111,13 @@ the diff, commit when satisfied.
 
 ## How the Two Lockfiles Interact
 
-| Scenario | What happens |
-|---|---|
-| No lockfiles exist | Online resolve → write machine lockfile |
-| Machine lockfile exists | Offline-first sync from machine lockfile |
+| Scenario                                  | What happens                                        |
+| ----------------------------------------- | --------------------------------------------------- |
+| No lockfiles exist                        | Online resolve → write machine lockfile             |
+| Machine lockfile exists                   | Offline-first sync from machine lockfile            |
 | Repo lockfile exists, no machine lockfile | Install from repo lockfile → write machine lockfile |
-| Both exist | Offline-first sync from machine lockfile |
-| `--upgrade` flag | Delete machine lockfile → online re-resolve |
+| Both exist                                | Offline-first sync from machine lockfile            |
+| `--upgrade` flag                          | Delete machine lockfile → online re-resolve         |
 
 ## Effect on Content-Addressed Storage
 

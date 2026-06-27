@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class _LiteralStr(str):
     """Marker subclass to force PyYAML block scalar (|) output style."""
+
+    __slots__ = ()
 
 
 class _LiteralDumper(yaml.Dumper):
@@ -54,22 +59,24 @@ def write_lockfile(lock: UvToolboxLock, path: Path) -> None:
         lock: The lockfile data to write.
         path: Destination path (created or overwritten).
     """
-    reqs = lock.requirements if hasattr(lock, 'requirements') else ''
     data = {
         'version': lock.version,
         'environments': {
             name: {
                 'requirements': _LiteralStr(
-                    env_lock.requirements
-                    if env_lock.requirements.endswith('\n')
-                    else env_lock.requirements + '\n'
+                    env_lock.requirements if env_lock.requirements.endswith('\n') else env_lock.requirements + '\n',
                 ),
             }
             for name, env_lock in lock.environments.items()
         },
     }
     path.write_text(
-        yaml.dump(data, Dumper=_LiteralDumper, default_flow_style=False, sort_keys=False),
+        yaml.dump(
+            data,
+            Dumper=_LiteralDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        ),
     )
 
 

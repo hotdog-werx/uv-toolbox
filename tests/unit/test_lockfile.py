@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from uv_toolbox.lockfile import (
     EnvironmentLock,
@@ -12,11 +15,7 @@ from uv_toolbox.lockfile import (
 )
 
 _COMPILED = (
-    'ruff==0.14.14 \\\n'
-    '    --hash=sha256:aaaa \\\n'
-    '    --hash=sha256:bbbb\n'
-    'click==8.3.1 \\\n'
-    '    --hash=sha256:cccc'
+    'ruff==0.14.14 \\\n    --hash=sha256:aaaa \\\n    --hash=sha256:bbbb\nclick==8.3.1 \\\n    --hash=sha256:cccc'
 )
 
 
@@ -48,7 +47,9 @@ def test_write_lockfile_uses_block_scalar_style(tmp_path: Path) -> None:
     assert 'ruff==0.14.14' in raw
 
 
-def test_write_lockfile_version_comes_before_environments(tmp_path: Path) -> None:
+def test_write_lockfile_version_comes_before_environments(
+    tmp_path: Path,
+) -> None:
     lock = UvToolboxLock(
         environments={'fmt': EnvironmentLock(requirements=_COMPILED)},
     )
@@ -76,7 +77,9 @@ def test_write_lockfile_multiple_environments(tmp_path: Path) -> None:
 
 
 def test_read_lockfile_missing_environment_returns_none(tmp_path: Path) -> None:
-    lock = UvToolboxLock(environments={'fmt': EnvironmentLock(requirements='ruff==0.14.14')})
+    lock = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements='ruff==0.14.14')},
+    )
     path = tmp_path / 'uv-toolbox.lock'
     write_lockfile(lock, path)
     loaded = read_lockfile(path)
@@ -84,7 +87,9 @@ def test_read_lockfile_missing_environment_returns_none(tmp_path: Path) -> None:
     assert loaded.environments.get('missing') is None
 
 
-def test_read_lockfile_trailing_newline_from_block_scalar(tmp_path: Path) -> None:
+def test_read_lockfile_trailing_newline_from_block_scalar(
+    tmp_path: Path,
+) -> None:
     lock = UvToolboxLock(
         environments={'fmt': EnvironmentLock(requirements='ruff==0.14.14')},
     )

@@ -16,7 +16,8 @@ isolated environment and pinned versions.
 - **Automatic deduplication**: Identical requirements across projects share the
   same venv via content-addressed storage
 - **Fast repeated installs**: After the first install, subsequent runs sync from
-  a local pinned lockfile using uv's package cache — no network, no re-resolution
+  a local pinned lockfile using uv's package cache — no network, no
+  re-resolution
 - **Reproducible across teams**: Commit `uv-toolbox.lock` to lock down exact
   versions with hashes for all platform variants via `uvtb lock`
 - **Works from subdirectories**: Run commands from anywhere in your project
@@ -62,5 +63,6 @@ ruff check .  # now available directly
 ## Documentation
 
 - [Quick Start](quick-start.md)
-- [Locking](locking.md) — offline-first installs, `uvtb lock`, and reproducible team setups
+- [Locking](locking.md) — offline-first installs, `uvtb lock`, and reproducible
+  team setups
 - [Content-Addressed Storage](content-addressing.md)

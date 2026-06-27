@@ -121,11 +121,7 @@ class UvToolboxEnvironment(BaseModel):
         - Removes comment lines and blank lines
         - Does NOT sort: sorting would break --hash= continuation lines
         """
-        return '\n'.join(
-            line
-            for line in req.splitlines()
-            if line.strip() and not line.strip().startswith('#')
-        )
+        return '\n'.join(line for line in req.splitlines() if line.strip() and not line.strip().startswith('#'))
 
     def _get_requirements_hash(self) -> str:
         """Generate a hash of the environment's requirements.
@@ -137,7 +133,9 @@ class UvToolboxEnvironment(BaseModel):
         Returns a 12-character hex string.
         """
         if self._resolved_requirements is not None:
-            normalized = self._normalize_resolved_requirements(self._resolved_requirements)
+            normalized = self._normalize_resolved_requirements(
+                self._resolved_requirements,
+            )
             return hashlib.sha256(normalized.encode()).hexdigest()[:12]
 
         if self.requirements:

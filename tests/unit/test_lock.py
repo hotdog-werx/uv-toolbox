@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
-
 from uv_toolbox.lock import generate_environment_lock, generate_lock
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
@@ -16,7 +14,11 @@ if TYPE_CHECKING:
 _COMPILED = 'ruff==0.14.14 \\\n    --hash=sha256:aaaa'
 
 
-def _make_settings(tmp_path: Path, *, envs: list[UvToolboxEnvironment]) -> UvToolboxSettings:
+def _make_settings(
+    tmp_path: Path,
+    *,
+    envs: list[UvToolboxEnvironment],
+) -> UvToolboxSettings:
     return UvToolboxSettings.model_validate(
         {
             'venv_path': tmp_path / '.uv-toolbox',
@@ -42,15 +44,23 @@ def test_generate_environment_lock_with_requirements_file(
     env = UvToolboxEnvironment(name='fmt', requirements_file=req_file)
     settings = _make_settings(tmp_path, envs=[env])
 
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked', return_value=_COMPILED)
+    run_mock = mocker.patch(
+        'uv_toolbox.lock.run_checked',
+        return_value=_COMPILED,
+    )
     result = generate_environment_lock(env=env, settings=settings)
 
     run_mock.assert_called_once_with(
         args=[
-            'uv', 'pip', 'compile',
-            '--generate-hashes', '--universal',
-            '--no-header', '--no-annotate',
-            '-o', '-',
+            'uv',
+            'pip',
+            'compile',
+            '--generate-hashes',
+            '--universal',
+            '--no-header',
+            '--no-annotate',
+            '-o',
+            '-',
             str(req_file),
         ],
         capture_stdout=True,
@@ -71,7 +81,10 @@ def test_generate_environment_lock_with_inline_requirements(
     temp_dir.mkdir()
     mocker.patch('uv_toolbox.lock.tempfile.mkdtemp', return_value=str(temp_dir))
     rmtree_mock = mocker.patch('uv_toolbox.lock.shutil.rmtree')
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked', return_value=_COMPILED)
+    run_mock = mocker.patch(
+        'uv_toolbox.lock.run_checked',
+        return_value=_COMPILED,
+    )
 
     result = generate_environment_lock(env=env, settings=settings)
 
@@ -79,10 +92,15 @@ def test_generate_environment_lock_with_inline_requirements(
     assert temp_req_file.read_text() == 'ruff\n'
     run_mock.assert_called_once_with(
         args=[
-            'uv', 'pip', 'compile',
-            '--generate-hashes', '--universal',
-            '--no-header', '--no-annotate',
-            '-o', '-',
+            'uv',
+            'pip',
+            'compile',
+            '--generate-hashes',
+            '--universal',
+            '--no-header',
+            '--no-annotate',
+            '-o',
+            '-',
             str(temp_req_file),
         ],
         capture_stdout=True,
@@ -99,7 +117,10 @@ def test_generate_environment_lock_does_not_pass_virtual_env(
 ) -> None:
     env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
     settings = _make_settings(tmp_path, envs=[env])
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked', return_value=_COMPILED)
+    run_mock = mocker.patch(
+        'uv_toolbox.lock.run_checked',
+        return_value=_COMPILED,
+    )
 
     generate_environment_lock(env=env, settings=settings)
 
@@ -136,7 +157,10 @@ def test_generate_lock_returns_environment_lock_instances(
 ) -> None:
     env = UvToolboxEnvironment(name='fmt', requirements='ruff')
     settings = _make_settings(tmp_path, envs=[env])
-    mocker.patch('uv_toolbox.lock.generate_environment_lock', return_value=_COMPILED)
+    mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        return_value=_COMPILED,
+    )
 
     lock = generate_lock(settings=settings)
 

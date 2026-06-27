@@ -91,7 +91,9 @@ def _install_from_resolved(
         settings: The UV toolbox settings.
         lockfile: Path where the machine lockfile should be written.
     """
-    assert env._resolved_requirements is not None
+    if env._resolved_requirements is None:
+        msg = '_install_from_resolved called without resolved requirements'
+        raise RuntimeError(msg)
     temp_dir = Path(tempfile.mkdtemp())
     try:
         temp_req_file = temp_dir / f'requirements_{env.name}.txt'
@@ -132,7 +134,9 @@ def _initial_install(
         if env.requirements_file is not None:
             req_source = str(env.requirements_file)
         else:
-            assert env.requirements is not None  # guaranteed by model validator
+            if env.requirements is None:
+                msg = 'env.requirements must be set when requirements_file is None'
+                raise RuntimeError(msg)
             temp_dir = Path(tempfile.mkdtemp())
             temp_req_file = temp_dir / f'requirements_{env.name}.txt'
             temp_req_file.write_text(env.requirements)
