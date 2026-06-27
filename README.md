@@ -110,3 +110,7 @@ eval "$(uv-toolbox shim)"
 This creates wrapper scripts for executables listed in the `executables` field
 of each environment. Only explicitly listed executables are exposed, preventing
 Python/pip from polluting your PATH.
+
+If you use [mise](https://mise.jdx.dev), the mise plugin handles PATH management
+automatically on every shell activation — see the
+[mise integration docs](docs/mise.md).

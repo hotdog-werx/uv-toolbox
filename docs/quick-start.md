@@ -105,6 +105,9 @@ pytest
 **Note**: Only executables listed in the `executables` field will be added to
 PATH. This prevents Python/pip from the venv from polluting your PATH.
 
+**Tip**: If you use [mise](https://mise.jdx.dev), the [mise plugin](mise.md)
+handles this automatically on every shell activation — no `eval` needed.
+
 ## Configuration Options
 
 ### Virtual Environment Location
@@ -187,6 +190,7 @@ See [Locking](locking.md) for the full workflow.
 
 - Learn about [locking](locking.md) — offline installs, team lockfiles, and
   upgrades
+- Set up the [mise plugin](mise.md) for automatic PATH management
 - Learn about [content-addressed storage](content-addressing.md)
 - See the [full configuration reference](configuration.md) (coming soon)
 - Check out [advanced usage patterns](advanced.md) (coming soon)
