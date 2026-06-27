@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import typing
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
 from uv_toolbox.process import run_checked
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:  # pragma: no cover
     from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
 
@@ -36,12 +36,9 @@ def generate_environment_lock(
         if env.requirements_file is not None:
             req_source = str(env.requirements_file)
         else:
-            if env.requirements is None:
-                msg = 'env.requirements must be set when requirements_file is None'
-                raise RuntimeError(msg)
             temp_dir = Path(tempfile.mkdtemp())
             temp_req_file = temp_dir / f'requirements_{env.name}.txt'
-            temp_req_file.write_text(env.requirements)
+            temp_req_file.write_text(env.resolved_requirements)
             req_source = str(temp_req_file)
 
         return run_checked(

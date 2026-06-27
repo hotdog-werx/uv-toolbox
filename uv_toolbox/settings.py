@@ -153,6 +153,22 @@ class UvToolboxEnvironment(BaseModel):
         # Use SHA-256 for hashing (truncated to 12 chars for readability)
         return hashlib.sha256(normalized.encode()).hexdigest()[:12]
 
+    @property
+    def resolved_requirements(self) -> str:
+        """Return the effective requirements for installation.
+
+        Returns pre-compiled requirements from the repo lockfile when available,
+        otherwise falls back to inline requirements. The model validator guarantees
+        exactly one of requirements or requirements_file is set, so requirements is
+        non-None here when requirements_file is None.
+        """
+        if self._resolved_requirements is not None:
+            return self._resolved_requirements
+        if self.requirements is None:  # pragma: no cover
+            msg = 'requirements is None — model validator guarantees this is impossible'
+            raise RuntimeError(msg)
+        return self.requirements
+
     def venv_path(self, settings: UvToolboxSettings) -> Path:
         """Get the path to the virtual environment for this environment.
 
