@@ -109,7 +109,10 @@ def test_install_requirements_writes_temp_file(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    """Writes inline requirements to a named temp file, passes it to uv, and cleans up the temp directory after sync."""
+    """Writes inline requirements to a named temp file and passes it to uv.
+
+    Verifies the temp directory is cleaned up after the sync completes.
+    """
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff==0.13.1',
