@@ -40,6 +40,7 @@ def test_create_virtualenv_runs_uv_venv(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Calls `uv venv` with the content-addressed venv path and the environment's process env."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)
     run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked')
@@ -59,6 +60,7 @@ def test_create_virtualenv_with_clear_flag(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Appends `--clear` to the `uv venv` invocation when clear=True."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)
     run_mock = mocker.patch('uv_toolbox.uv_helpers.run_checked')
@@ -78,6 +80,7 @@ def test_install_requirements_uses_requirements_file(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Passes the requirements file path directly to `uv pip install --exact`, skipping temp file creation."""
     req_file = tmp_path / 'requirements.txt'
     req_file.write_text('ruff\n')
     env = UvToolboxEnvironment(
@@ -106,6 +109,7 @@ def test_install_requirements_writes_temp_file(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Writes inline requirements to a named temp file, passes it to uv, and cleans up the temp directory after sync."""
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff==0.13.1',
@@ -138,6 +142,7 @@ def test_initialize_virtualenv_calls_helpers_in_order(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Calls create_virtualenv before install_requirements."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)
     calls: list[str] = []
