@@ -50,7 +50,7 @@ dev = ["pytest>=8.0.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
-    "ignore:Config key `pyproject_toml_table_header` is set in model_config but will be ignored:UserWarning",
+  "ignore:Config key `pyproject_toml_table_header` is set in model_config but will be ignored:UserWarning",
 ]
 
 [tool.ruff]
