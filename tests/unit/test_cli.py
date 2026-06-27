@@ -48,6 +48,7 @@ def _write_config(
 
 
 def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
+    """Runs `uv run --no-project` with the correct args and sets VIRTUAL_ENV to the content-addressed path."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -81,15 +82,14 @@ def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     init_mock.assert_called_once()
     run_mock.assert_called_once()
     args = run_mock.call_args.kwargs['args']
-    # Should use uv run with --no-project only
     assert args == ['uv', 'run', '--no-project', '--', 'ruff', '--version']
 
     extra_env = run_mock.call_args.kwargs['extra_env']
-    # Check that VIRTUAL_ENV is in the venv_root (content-addressed subdir)
     assert extra_env['VIRTUAL_ENV'].startswith(str(venv_root))
 
 
 def test_exec_requires_delimiter(mocker: MockerFixture, tmp_path: Path) -> None:
+    """The `exec` command raises CommandDelimiterRequiredError when `--` is absent from argv."""
     config_path = _write_config(
         tmp_path,
         venv_path=tmp_path / '.uv-toolbox',
@@ -107,8 +107,8 @@ def test_exec_requires_delimiter(mocker: MockerFixture, tmp_path: Path) -> None:
 
 
 def test_shim_outputs_paths(tmp_path: Path) -> None:
+    """Emits `export PATH=...` shell code containing shim directories for each env with listed executables."""
     venv_root = tmp_path / '.uv-toolbox'
-    # Write config with executables specified
     env_lines = [
         '  - name: env1',
         "    requirements: 'ruff'",
@@ -128,7 +128,6 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
     config_path = tmp_path / 'uvtb.yaml'
     config_path.write_text(contents)
 
-    # Create settings to compute venv paths
     settings = UvToolboxSettings.model_validate(
         {
             'venv_path': venv_root,
@@ -147,7 +146,6 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
         },
     )
 
-    # Create fake venvs
     create_fake_venv(
         settings.environments[0].venv_path(settings=settings),
         ['ruff'],
@@ -161,10 +159,8 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     output = result.stdout.strip()
-    # Check format is correct
     assert output.startswith('export PATH="')
     assert output.endswith(f'{os.pathsep}$PATH"')
-    # Should contain shim directories (per-venv)
     assert 'shims' in output
 
 
@@ -172,6 +168,7 @@ def test_install_initializes_all_envs(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """The `install` command calls initialize_virtualenv for every environment in config order."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -190,6 +187,7 @@ def test_install_initializes_all_envs(
 
 
 def test_main_invokes_app(mocker: MockerFixture) -> None:
+    """The main() entry point calls the Typer app."""
     app_mock = mocker.patch('uv_toolbox.cli.app')
 
     cli_module.main()
@@ -201,6 +199,7 @@ def test_install_handles_uv_toolbox_error(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """The `install` command exits with code 1 and prints the error message when initialize_virtualenv raises."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -223,6 +222,7 @@ def test_exec_handles_uv_toolbox_error(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """The `exec` command exits with code 1 and prints the error message on UvToolboxError."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -245,7 +245,49 @@ def test_exec_handles_uv_toolbox_error(
     assert 'Test error' in result.stderr
 
 
+def test_shim_list_paths_prints_one_dir_per_line(tmp_path: Path) -> None:
+    """Passing `--list-paths` prints each shim directory as a plain path per line, not shell export syntax."""
+    venv_root = tmp_path / '.uv-toolbox'
+    env_lines = [
+        '  - name: env1',
+        "    requirements: 'ruff'",
+        '    executables: [ruff]',
+    ]
+    config_path = tmp_path / 'uvtb.yaml'
+    config_path.write_text(
+        '\n'.join([f'venv_path: {venv_root}', 'environments:', *env_lines, '']),
+    )
+
+    settings = UvToolboxSettings.model_validate(
+        {
+            'venv_path': venv_root,
+            'environments': [
+                {
+                    'name': 'env1',
+                    'requirements': 'ruff',
+                    'executables': ['ruff'],
+                },
+            ],
+        },
+    )
+    create_fake_venv(
+        settings.environments[0].venv_path(settings=settings),
+        ['ruff'],
+    )
+
+    result = runner.invoke(
+        app,
+        ['--config', str(config_path), 'shim', '--list-paths'],
+    )
+
+    assert result.exit_code == 0
+    lines = result.stdout.strip().splitlines()
+    assert len(lines) == 1
+    assert lines[0].endswith('shims')
+
+
 def test_shim_outputs_comment_when_no_shims(tmp_path: Path) -> None:
+    """The `shim` command emits a shell comment when no venvs exist and no shims are created."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -253,7 +295,6 @@ def test_shim_outputs_comment_when_no_shims(tmp_path: Path) -> None:
         envs=[('env1', 'ruff')],
     )
 
-    # Don't create any venvs - should output comment
     result = runner.invoke(app, ['--config', str(config_path), 'shim'])
 
     assert result.exit_code == 0
@@ -265,6 +306,7 @@ def test_shim_handles_uv_toolbox_error(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """The `shim` command exits with code 1 and prints the error message when create_shims raises."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,

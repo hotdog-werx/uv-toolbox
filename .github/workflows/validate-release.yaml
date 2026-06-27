@@ -28,10 +28,9 @@ jobs:
 
       - name: Releez release dry-run
         id: releez
-        uses: hotdog-werx/releez-finalize-action@v0
+        uses: hotdog-werx/releez@v1
         with:
-          is-full-release: 'true'
-          dry-run: 'true'
+          mode: validate
 
       - name: Comment PR
         uses: thollander/actions-comment-pull-request@v3

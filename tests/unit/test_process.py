@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 def test_run_checked_returns_stdout(mocker: MockerFixture) -> None:
+    """Returns stripped stdout on a successful subprocess run."""
     completed = SimpleNamespace(stdout='ok\n')
     run_mock = mocker.patch(
         'uv_toolbox.process.subprocess.run',
@@ -27,6 +28,7 @@ def test_run_checked_returns_stdout(mocker: MockerFixture) -> None:
 
 
 def test_run_checked_skips_stdout_when_disabled(mocker: MockerFixture) -> None:
+    """Passes stdout=None to subprocess and returns an empty string when capture_stdout=False."""
     completed = SimpleNamespace(stdout=None)
     run_mock = mocker.patch(
         'uv_toolbox.process.subprocess.run',
@@ -40,6 +42,7 @@ def test_run_checked_skips_stdout_when_disabled(mocker: MockerFixture) -> None:
 
 
 def test_run_checked_skips_stderr_when_disabled(mocker: MockerFixture) -> None:
+    """Passes stderr=None to subprocess when capture_stderr=False."""
     completed = SimpleNamespace(stdout='ok\n')
     run_mock = mocker.patch(
         'uv_toolbox.process.subprocess.run',
@@ -52,6 +55,7 @@ def test_run_checked_skips_stderr_when_disabled(mocker: MockerFixture) -> None:
 
 
 def test_run_checked_raises_missing_cli(mocker: MockerFixture) -> None:
+    """Raises MissingCliError when the executable is not found (FileNotFoundError from subprocess)."""
     mocker.patch(
         'uv_toolbox.process.subprocess.run',
         side_effect=FileNotFoundError,
@@ -62,6 +66,7 @@ def test_run_checked_raises_missing_cli(mocker: MockerFixture) -> None:
 
 
 def test_missing_cli_error_message_for_multiple_cli_names() -> None:
+    """MissingCliError formats a readable message when multiple CLI names are provided."""
     exc = MissingCliError(['uv', 'python'])
 
     assert 'Required CLIs' in str(exc)
@@ -70,6 +75,7 @@ def test_missing_cli_error_message_for_multiple_cli_names() -> None:
 def test_run_checked_raises_external_command_error(
     mocker: MockerFixture,
 ) -> None:
+    """Raises ExternalCommandError with the correct returncode and stripped stderr on a non-zero exit."""
     err = subprocess.CalledProcessError(2, ['cmd'], output='', stderr='boom\n')
     mocker.patch('uv_toolbox.process.subprocess.run', side_effect=err)
 
@@ -83,6 +89,7 @@ def test_run_checked_raises_external_command_error(
 def test_run_checked_omits_stderr_when_capture_disabled(
     mocker: MockerFixture,
 ) -> None:
+    """ExternalCommandError carries an empty stderr string when capture_stderr=False."""
     err = subprocess.CalledProcessError(2, ['cmd'], output='', stderr='boom\n')
     mocker.patch('uv_toolbox.process.subprocess.run', side_effect=err)
 
@@ -96,6 +103,7 @@ def test_run_checked_prints_command_when_show_command_enabled(
     mocker: MockerFixture,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Prints the command to stderr with an arrow prefix when show_command=True."""
     completed = SimpleNamespace(stdout='ok\n')
     mocker.patch(
         'uv_toolbox.process.subprocess.run',
@@ -105,6 +113,5 @@ def test_run_checked_prints_command_when_show_command_enabled(
     run_checked(['uv', 'venv', '/path/to/venv'], show_command=True)
 
     captured = capsys.readouterr()
-    # Command should be printed to stderr with arrow prefix
     assert '▶' in captured.err
     assert 'uv venv /path/to/venv' in captured.err
