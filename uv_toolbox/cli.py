@@ -148,7 +148,6 @@ def shim(
         bool,
         typer.Option(
             '--list-paths',
-            is_flag=True,
             help='Print shim directories one per line instead of emitting shell code.',
         ),
     ] = False,

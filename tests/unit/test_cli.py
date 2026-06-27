@@ -255,18 +255,30 @@ def test_shim_list_paths_prints_one_dir_per_line(tmp_path: Path) -> None:
     ]
     config_path = tmp_path / 'uvtb.yaml'
     config_path.write_text(
-        '\n'.join([f'venv_path: {venv_root}', 'environments:', *env_lines, ''])
+        '\n'.join([f'venv_path: {venv_root}', 'environments:', *env_lines, '']),
     )
 
     settings = UvToolboxSettings.model_validate(
         {
             'venv_path': venv_root,
-            'environments': [{'name': 'env1', 'requirements': 'ruff', 'executables': ['ruff']}],
+            'environments': [
+                {
+                    'name': 'env1',
+                    'requirements': 'ruff',
+                    'executables': ['ruff'],
+                },
+            ],
         },
     )
-    create_fake_venv(settings.environments[0].venv_path(settings=settings), ['ruff'])
+    create_fake_venv(
+        settings.environments[0].venv_path(settings=settings),
+        ['ruff'],
+    )
 
-    result = runner.invoke(app, ['--config', str(config_path), 'shim', '--list-paths'])
+    result = runner.invoke(
+        app,
+        ['--config', str(config_path), 'shim', '--list-paths'],
+    )
 
     assert result.exit_code == 0
     lines = result.stdout.strip().splitlines()
