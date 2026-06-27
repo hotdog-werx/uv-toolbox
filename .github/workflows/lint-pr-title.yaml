@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hotdog-werx/releez@v0
+      - uses: hotdog-werx/releez@v1
         with:
           mode: validate-commit
           commit-message: ${{ github.event.pull_request.title }}

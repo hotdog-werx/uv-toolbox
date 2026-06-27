@@ -28,7 +28,7 @@ jobs:
 
       - name: Releez release dry-run
         id: releez
-        uses: hotdog-werx/releez@v0
+        uses: hotdog-werx/releez@v1
         with:
           mode: validate
 

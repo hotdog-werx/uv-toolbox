@@ -1,8 +1,8 @@
 # mise Integration
 
 `uv-toolbox` ships a [mise](https://mise.jdx.dev) env plugin that automatically
-adds your shims to `PATH` on every shell activation — no `eval` in your shell
-rc required.
+adds your shims to `PATH` on every shell activation — no `eval` in your shell rc
+required.
 
 ## Setup
 
@@ -27,8 +27,8 @@ mise install
 ```
 
 On the next shell activation, mise calls the plugin, which runs
-`uv-toolbox shim --list-paths` and prepends the shim directories to `PATH`.
-Your tools are available directly:
+`uv-toolbox shim --list-paths` and prepends the shim directories to `PATH`. Your
+tools are available directly:
 
 ```bash
 ruff check .
