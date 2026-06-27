@@ -37,6 +37,16 @@ uv-toolbox install
 This creates virtual environments for each defined environment. By default,
 venvs are stored in `~/.cache/uv-toolbox/` using content-addressed storage.
 
+After the first install, a pinned machine lockfile is written alongside each
+venv. Subsequent installs sync from it using uv's local package cache — no
+network required.
+
+To re-resolve and pick up newer versions:
+
+```bash
+uv-toolbox install --upgrade  # or -u
+```
+
 ### Run commands
 
 Run a command inside a specific environment:
@@ -158,8 +168,24 @@ This field is optional and only needed if you plan to use `uv-toolbox shim`. It
 gives you explicit control over which tools are added to PATH, preventing
 Python/pip from the venv from polluting your environment.
 
+### Generate a repo lockfile
+
+For reproducible installs across the team, generate a committed lockfile with
+pinned versions and hashes for all platform variants:
+
+```bash
+uv-toolbox lock
+```
+
+This writes `uv-toolbox.lock` next to your config file. Commit it to version
+control — when `uv-toolbox.lock` is present, `uvtb install` uses the pre-resolved,
+hash-verified requirements automatically.
+
+See [Locking](locking.md) for the full workflow.
+
 ## Next Steps
 
+- Learn about [locking](locking.md) — offline installs, team lockfiles, and upgrades
 - Learn about [content-addressed storage](content-addressing.md)
 - See the [full configuration reference](configuration.md) (coming soon)
 - Check out [advanced usage patterns](advanced.md) (coming soon)

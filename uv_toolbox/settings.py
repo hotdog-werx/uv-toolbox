@@ -15,6 +15,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     model_validator,
 )
 from pydantic_settings import (
@@ -34,6 +35,7 @@ from uv_toolbox.errors import (
     MissingConfigFileError,
     MultipleEnvironmentsError,
 )
+from uv_toolbox.lockfile import read_lockfile
 from uv_toolbox.utils import _filter_nulls
 
 if typing.TYPE_CHECKING:
@@ -80,6 +82,11 @@ class UvToolboxEnvironment(BaseModel):
     environment: dict[str, str] = {}
     executables: list[str] = []
 
+    # Injected at settings load time from the repo lockfile; not part of the
+    # config schema. When set, _get_requirements_hash uses this content instead
+    # of the raw requirements so the CAS address changes after uvtb lock.
+    _resolved_requirements: str | None = PrivateAttr(default=None)
+
     model_config = ConfigDict(
         alias_generator=_ALIASES,
         populate_by_name=True,
@@ -107,11 +114,32 @@ class UvToolboxEnvironment(BaseModel):
         # Sort for consistency
         return '\n'.join(sorted(lines))
 
+    @staticmethod
+    def _normalize_resolved_requirements(req: str) -> str:
+        """Normalize resolved requirements for consistent hashing.
+
+        - Removes comment lines and blank lines
+        - Does NOT sort: sorting would break --hash= continuation lines
+        """
+        return '\n'.join(
+            line
+            for line in req.splitlines()
+            if line.strip() and not line.strip().startswith('#')
+        )
+
     def _get_requirements_hash(self) -> str:
         """Generate a hash of the environment's requirements.
 
-        Returns a 12-character hex string based on the normalized requirements.
+        When _resolved_requirements is set (injected from the repo lockfile),
+        hashes the resolved content so the CAS address reflects the locked
+        packages rather than the raw requirements spec.
+
+        Returns a 12-character hex string.
         """
+        if self._resolved_requirements is not None:
+            normalized = self._normalize_resolved_requirements(self._resolved_requirements)
+            return hashlib.sha256(normalized.encode()).hexdigest()[:12]
+
         if self.requirements:
             normalized = self._normalize_requirements(self.requirements)
         else:
@@ -177,6 +205,13 @@ class UvToolboxSettings(BaseSettings):
     )
 
     @property
+    def lockfile_path(self) -> Path | None:
+        """Path to the repo lockfile, or None if no config file is known."""
+        if self.config_file is None:
+            return None
+        return self.config_file.parent / 'uv-toolbox.lock'
+
+    @property
     def resolved_venv_path(self) -> Path:
         """Resolve the venv path.
 
@@ -238,6 +273,27 @@ class UvToolboxSettings(BaseSettings):
             if self.default_environment not in env_names:
                 msg = f'Default environment {self.default_environment!r} not found in environments.'
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode='after')
+    def inject_resolved_requirements(self) -> UvToolboxSettings:
+        """Inject resolved requirements from the repo lockfile into environments.
+
+        When uv-toolbox.lock exists next to the config file, each environment's
+        _resolved_requirements private attribute is populated with the compiled,
+        hash-bearing requirements for that environment. This causes venv_path()
+        to return a CAS address derived from the locked content, ensuring that
+        running uvtb lock followed by uvtb install always uses a fresh venv.
+        """
+        lockfile_path = self.lockfile_path
+        if lockfile_path is None or not lockfile_path.exists():
+            return self
+
+        lock = read_lockfile(lockfile_path)
+        for env in self.environments:
+            env_lock = lock.environments.get(env.name)
+            if env_lock is not None:
+                env._resolved_requirements = env_lock.requirements
         return self
 
     @classmethod

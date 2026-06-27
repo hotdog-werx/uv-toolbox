@@ -15,8 +15,10 @@ isolated environment and pinned versions.
   powered by uv's blazing-fast resolver
 - **Automatic deduplication**: Identical requirements across projects share the
   same venv via content-addressed storage
-- **Reproducible across teams**: Lock down tool versions so everyone runs the
-  same formatter, linter, or test runner
+- **Fast repeated installs**: After the first install, subsequent runs sync from
+  a local pinned lockfile using uv's package cache — no network, no re-resolution
+- **Reproducible across teams**: Commit `uv-toolbox.lock` to lock down exact
+  versions with hashes for all platform variants via `uvtb lock`
 - **Works from subdirectories**: Run commands from anywhere in your project
 - **Simple execution**: Run tools with `uv-toolbox exec` or add them all to your
   PATH with `eval "$(uv-toolbox shim)"`
@@ -56,3 +58,9 @@ ruff check .  # now available directly
 ```
 
 [Get Started →](quick-start.md)
+
+## Documentation
+
+- [Quick Start](quick-start.md)
+- [Locking](locking.md) — offline-first installs, `uvtb lock`, and reproducible team setups
+- [Content-Addressed Storage](content-addressing.md)
