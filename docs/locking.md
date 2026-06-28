@@ -119,6 +119,37 @@ the diff, commit when satisfied.
 | Both exist                                | Offline-first sync from machine lockfile            |
 | `--upgrade` flag                          | Delete machine lockfile → online re-resolve         |
 
+## CI Caching
+
+In CI, two caches are worth preserving between runs:
+
+| Cache path              | Key                        | What it buys                                       |
+| ----------------------- | -------------------------- | -------------------------------------------------- |
+| `~/.cache/uv/`          | hash of `uv-toolbox.lock`  | Skips downloading wheels (biggest win)             |
+| `~/.cache/uv-toolbox/`  | hash of `uv-toolbox.lock`  | Skips venv creation and sync entirely              |
+
+Both caches should bust when `uv-toolbox.lock` changes. If your project also
+uses uv to manage its own dependencies (i.e. you have a `uv.lock` alongside
+`uv-toolbox.lock`), keep them as **separate cache entries** with separate keys
+— mixing them causes spurious cache misses when only one file changes.
+
+### GitHub Actions example
+
+```yaml
+- uses: actions/cache@v6.1.0
+  with:
+    path: |
+      ~/.cache/uv
+      ~/.cache/uv-toolbox
+    key: uv-toolbox-${{ hashFiles('uv-toolbox.lock') }}
+    restore-keys: |
+      uv-toolbox-
+```
+
+On a cache hit, `uvtb install` completes offline in milliseconds. On a miss
+(first run or after `uvtb lock`), it downloads and resolves normally and primes
+the cache for the next run.
+
 ## Effect on Content-Addressed Storage
 
 When `uv-toolbox.lock` is present, the CAS hash used to locate each venv is
