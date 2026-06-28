@@ -123,15 +123,15 @@ the diff, commit when satisfied.
 
 In CI, two caches are worth preserving between runs:
 
-| Cache path              | Key                        | What it buys                                       |
-| ----------------------- | -------------------------- | -------------------------------------------------- |
-| `~/.cache/uv/`          | hash of `uv-toolbox.lock`  | Skips downloading wheels (biggest win)             |
-| `~/.cache/uv-toolbox/`  | hash of `uv-toolbox.lock`  | Skips venv creation and sync entirely              |
+| Cache path             | Key                       | What it buys                           |
+| ---------------------- | ------------------------- | -------------------------------------- |
+| `~/.cache/uv/`         | hash of `uv-toolbox.lock` | Skips downloading wheels (biggest win) |
+| `~/.cache/uv-toolbox/` | hash of `uv-toolbox.lock` | Skips venv creation and sync entirely  |
 
 Both caches should bust when `uv-toolbox.lock` changes. If your project also
 uses uv to manage its own dependencies (i.e. you have a `uv.lock` alongside
-`uv-toolbox.lock`), keep them as **separate cache entries** with separate keys
-— mixing them causes spurious cache misses when only one file changes.
+`uv-toolbox.lock`), keep them as **separate cache entries** with separate keys —
+mixing them causes spurious cache misses when only one file changes.
 
 ### GitHub Actions example
 
@@ -141,10 +141,15 @@ uses uv to manage its own dependencies (i.e. you have a `uv.lock` alongside
     path: |
       ~/.cache/uv
       ~/.cache/uv-toolbox
-    key: uv-toolbox-${{ hashFiles('uv-toolbox.lock') }}
+    key: uv-${{ hashFiles('uv.lock', 'uv-toolbox.lock') }}
     restore-keys: |
-      uv-toolbox-
+      uv-
 ```
+
+`~/.cache/uv` is uv's package cache and is shared between uv-toolbox and any
+uv-managed project venvs, so both paths belong in the same cache entry. The key
+covers both lockfiles — `hashFiles` silently ignores any that don't exist, so
+this works whether or not your project also has a `uv.lock`.
 
 On a cache hit, `uvtb install` completes offline in milliseconds. On a miss
 (first run or after `uvtb lock`), it downloads and resolves normally and primes
