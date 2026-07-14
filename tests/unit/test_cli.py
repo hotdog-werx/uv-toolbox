@@ -330,6 +330,7 @@ def test_shim_handles_uv_toolbox_error(
 
 
 def test_lock_writes_lockfile(mocker: MockerFixture, tmp_path: Path) -> None:
+    """The `lock` command writes the generated lock data to `<config-dir>/uv-toolbox.lock` and reports it."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,
@@ -354,6 +355,7 @@ def test_lock_writes_lockfile(mocker: MockerFixture, tmp_path: Path) -> None:
 
 
 def test_lock_errors_without_config_file(mocker: MockerFixture) -> None:
+    """The `lock` command exits with code 1 when settings has no lockfile_path (no config file known)."""
     # Patch settings to return lockfile_path=None (no config file known)
     mocker.patch(
         'uv_toolbox.cli.UvToolboxSettings.from_context',
@@ -372,6 +374,7 @@ def test_lock_handles_uv_toolbox_error(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """The `lock` command exits with code 1 and prints the error message when generate_lock raises."""
     venv_root = tmp_path / '.uv-toolbox'
     config_path = _write_config(
         tmp_path,

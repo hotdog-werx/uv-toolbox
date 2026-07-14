@@ -20,6 +20,7 @@ _COMPILED = (
 
 
 def test_write_and_read_lockfile_round_trip(tmp_path: Path) -> None:
+    """Writing then reading a lockfile preserves the version and environment requirements content."""
     lock = UvToolboxLock(
         environments={
             'formatting': EnvironmentLock(requirements=_COMPILED),
@@ -36,6 +37,7 @@ def test_write_and_read_lockfile_round_trip(tmp_path: Path) -> None:
 
 
 def test_write_lockfile_uses_block_scalar_style(tmp_path: Path) -> None:
+    """Requirements are serialized using YAML's `|` block scalar style for readable multi-line output."""
     lock = UvToolboxLock(
         environments={'fmt': EnvironmentLock(requirements=_COMPILED)},
     )
@@ -50,6 +52,7 @@ def test_write_lockfile_uses_block_scalar_style(tmp_path: Path) -> None:
 def test_write_lockfile_version_comes_before_environments(
     tmp_path: Path,
 ) -> None:
+    """The `version` key is serialized before `environments` for a stable, readable lockfile layout."""
     lock = UvToolboxLock(
         environments={'fmt': EnvironmentLock(requirements=_COMPILED)},
     )
@@ -61,6 +64,7 @@ def test_write_lockfile_version_comes_before_environments(
 
 
 def test_write_lockfile_multiple_environments(tmp_path: Path) -> None:
+    """A lockfile with multiple environments round-trips each environment's requirements independently."""
     lock = UvToolboxLock(
         environments={
             'formatting': EnvironmentLock(requirements='ruff==0.14.14'),
@@ -77,6 +81,7 @@ def test_write_lockfile_multiple_environments(tmp_path: Path) -> None:
 
 
 def test_read_lockfile_missing_environment_returns_none(tmp_path: Path) -> None:
+    """Looking up an environment name absent from the lockfile returns None instead of raising."""
     lock = UvToolboxLock(
         environments={'fmt': EnvironmentLock(requirements='ruff==0.14.14')},
     )
@@ -90,6 +95,7 @@ def test_read_lockfile_missing_environment_returns_none(tmp_path: Path) -> None:
 def test_read_lockfile_trailing_newline_from_block_scalar(
     tmp_path: Path,
 ) -> None:
+    """Reading a lockfile preserves the trailing newline that PyYAML's `|` block scalar adds on write."""
     lock = UvToolboxLock(
         environments={'fmt': EnvironmentLock(requirements='ruff==0.14.14')},
     )
@@ -102,6 +108,7 @@ def test_read_lockfile_trailing_newline_from_block_scalar(
 
 
 def test_write_lockfile_does_not_use_global_representer(tmp_path: Path) -> None:
+    """Confirms the lockfile's block-scalar representer stays scoped and doesn't leak into the global yaml dumper."""
     # Confirm _LiteralStr doesn't leak into the global yaml dumper
     plain_str = 'hello\nworld'
     result = yaml.dump({'key': plain_str})

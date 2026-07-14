@@ -10,9 +10,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-# ruff: noqa: S607
-
-
 def test_integration_exec_installs_project_dependencies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

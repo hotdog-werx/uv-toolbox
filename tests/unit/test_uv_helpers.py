@@ -153,6 +153,7 @@ def test_install_requirements_writes_temp_file_for_inline_requirements(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Writes inline requirements to a named temp file, syncs from it, then removes the temp directory."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.13.1')
     settings = _make_settings(tmp_path, env=env)
     run_mock = mocker.patch(
@@ -188,6 +189,7 @@ def test_install_requirements_syncs_offline_when_lockfile_exists(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Syncs using `uv pip sync --offline` against the machine lockfile when one already exists."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.14.14')
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)
@@ -215,6 +217,7 @@ def test_install_requirements_falls_back_online_when_offline_fails(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Retries `uv pip sync` without `--offline` when the offline sync fails due to network connectivity errors."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.14.14')
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)
@@ -248,6 +251,7 @@ def test_install_requirements_does_not_update_lockfile_after_online_fallback(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """The machine lockfile is left untouched when the offline sync fails and an online fallback sync succeeds."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.14.14')
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)
@@ -277,6 +281,7 @@ def test_install_requirements_upgrade_deletes_lockfile_and_reinstalls(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """With upgrade=True, the stale machine lockfile is replaced with fresh freeze output after reinstalling."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.14.14')
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)
@@ -305,6 +310,7 @@ def test_install_requirements_upgrade_triggers_initial_install_even_if_lockfile_
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """With upgrade=True, a stale machine lockfile is bypassed in favor of the online sync + freeze path."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.14.14')
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)
@@ -339,6 +345,7 @@ def test_install_requirements_uses_resolved_when_no_machine_lockfile(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Falls back to the environment's `_resolved_requirements` (shared lockfile) when no machine lockfile exists."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     env._resolved_requirements = 'ruff==0.14.14 \\\n    --hash=sha256:aaaa\n'
     settings = _make_settings(tmp_path, env=env)
@@ -373,6 +380,7 @@ def test_install_requirements_machine_lockfile_written_with_resolved_content(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """After installing from resolved requirements, the machine lockfile is written with that exact content."""
     resolved = 'ruff==0.14.14 \\\n    --hash=sha256:aaaa\n'
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     env._resolved_requirements = resolved
@@ -398,6 +406,7 @@ def test_install_requirements_prefers_machine_lockfile_over_resolved(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """When both a machine lockfile and resolved requirements are available, the machine lockfile takes priority."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     env._resolved_requirements = 'ruff==0.14.14 \\\n    --hash=sha256:aaaa\n'
     settings = _make_settings(tmp_path, env=env)
@@ -461,6 +470,7 @@ def test_initialize_virtualenv_skips_create_when_venv_exists_and_no_clear(
     tmp_path: Path,
     clear: bool,  # noqa: FBT001
 ) -> None:
+    """create_virtualenv is only invoked when the venv is missing or clear=True; otherwise it's skipped."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff')
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)

@@ -39,6 +39,7 @@ def test_generate_environment_lock_with_requirements_file(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Compiles a lockfile directly from a requirements_file path via `uv pip compile --generate-hashes`."""
     req_file = tmp_path / 'requirements.txt'
     req_file.write_text('ruff\n')
     env = UvToolboxEnvironment(name='fmt', requirements_file=req_file)
@@ -74,6 +75,7 @@ def test_generate_environment_lock_with_inline_requirements(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Writes inline requirements to a named temp file, compiles it, then cleans up the temp directory."""
     env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
     settings = _make_settings(tmp_path, envs=[env])
 
@@ -115,6 +117,7 @@ def test_generate_environment_lock_does_not_pass_virtual_env(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """Compiling a lockfile does not set extra_env, since `uv pip compile` should not target a specific venv."""
     env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
     settings = _make_settings(tmp_path, envs=[env])
     run_mock = mocker.patch(
@@ -132,6 +135,7 @@ def test_generate_lock_covers_all_environments(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """generate_lock produces a UvToolboxLock with an entry for every configured environment."""
     envs = [
         UvToolboxEnvironment(name='fmt', requirements='ruff'),
         UvToolboxEnvironment(name='test', requirements='pytest'),
@@ -155,6 +159,7 @@ def test_generate_lock_returns_environment_lock_instances(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """generate_lock wraps each environment's compiled requirements in an EnvironmentLock instance."""
     env = UvToolboxEnvironment(name='fmt', requirements='ruff')
     settings = _make_settings(tmp_path, envs=[env])
     mocker.patch(

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import pytest
 
 
-# ruff: noqa: S603, S607
+# ruff: noqa: S603
 
 
 def test_integration_shim_runs_in_correct_venv(

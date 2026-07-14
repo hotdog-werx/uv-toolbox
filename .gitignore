@@ -1,4 +1,3 @@
-.codeguide*
 .venv
 build/
 dist/
@@ -12,9 +11,11 @@ test_ignored.py
 htmlcov/
 book/
 .pytest_cache/*
-.pkglink/
 tmp*
-/.editorconfig
 site
 .repolish/*
 .uv-toolbox/
+# provider-linked symlinks use an absolute path to their source — never
+# committable, every environment links these fresh for itself
+.editorconfig
+dprint.json
