@@ -17,7 +17,7 @@ jobs:
     uses: hotdog-werx/devkit/.github/workflows/__python_python-checks.yaml@topic/repolish
     with:
       operating-systems: '["ubuntu-latest", "windows-latest"]'
-      codecov: false
+      codecov: true
     secrets: inherit
 
 ## start-custom-ci-checks

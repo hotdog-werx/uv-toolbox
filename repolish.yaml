@@ -10,6 +10,10 @@ providers:
       # Preserves the OS matrix the old codeguide/pkglink-based config
       # (ci_operating_systems) already ran before this migration.
       python_operating_systems: '["ubuntu-latest", "windows-latest"]'
+      # README already carries a codecov badge and the repo has a
+      # CODECOV_TOKEN secret configured — this was silently dropped during
+      # the migration until now.
+      python_codecov: true
   python:
     cli: devkit-python-link
   releez:
