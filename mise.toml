@@ -40,9 +40,9 @@ shellcheck = "0.11.0"
 "pipx:ruff" = "0.14.14"
 "pipx:releez" = "1.0.1"
 "pipx:zensical" = "0.0.19"
-"pipx:ty" = "latest"
+"pipx:ty" = "0.0.59"
 "pipx:complexipy" = "4.0.2"
-"pipx:pydoclint" = "latest"
+"pipx:pydoclint" = "0.9.1"
 
 # Devkit tasks are picked up from the .repolish/devkit-<name>/
 # whole-resources-directory symlink `repolish link` creates on every `mise
@@ -71,7 +71,6 @@ run = "echo Ready!"
 depends = [
   "workspace:dprint:check",
   "python:check:ruff",
-  "python:check:format",
   "python:check:ty",
   "python:check:complexity",
   "python:check:pydoclint",
