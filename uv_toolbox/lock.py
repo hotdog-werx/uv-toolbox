@@ -61,6 +61,12 @@ def generate_environment_lock(
     finally:
         if temp_dir is not None:
             shutil.rmtree(temp_dir)
+        # `-o -` asks uv to write to stdout (which is what we actually
+        # capture and use), but uv also drops a literal file named `-` as a
+        # side effect in the caller's own cwd — not something we can avoid
+        # by changing cwd here, since relative -e/-r paths in requirements
+        # text are meant to resolve against the caller's actual directory.
+        Path('-').unlink(missing_ok=True)
 
 
 def generate_lock(settings: UvToolboxSettings) -> UvToolboxLock:
