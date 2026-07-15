@@ -128,3 +128,16 @@ def test_lockfiles_equal_ignores_serialization_newline() -> None:
     assert lockfiles_equal(generated, loaded)
     loaded.environments['fmt'].requirements = 'ruff==2\n'
     assert not lockfiles_equal(generated, loaded)
+
+
+def test_lockfiles_equal_rejects_different_structure() -> None:
+    """Lockfiles with different versions or environment sets are not equivalent."""
+    lock = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements='ruff==1')},
+    )
+
+    assert not lockfiles_equal(
+        lock,
+        UvToolboxLock(version=2, environments=lock.environments),
+    )
+    assert not lockfiles_equal(lock, UvToolboxLock())
