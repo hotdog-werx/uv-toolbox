@@ -387,7 +387,10 @@ def test_lock_check_succeeds_without_writing(
     mocker.patch('uv_toolbox.cli.generate_lock', return_value=lock_data)
     write_mock = mocker.patch('uv_toolbox.cli.write_lockfile')
 
-    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--check'])
+    result = runner.invoke(
+        app,
+        ['--config', str(config_path), 'lock', '--check'],
+    )
 
     assert result.exit_code == 0
     assert 'Lockfile is up to date' in result.stdout
@@ -406,7 +409,9 @@ def test_lock_check_reports_stale_lock(
     )
     write_lockfile(
         UvToolboxLock(
-            environments={'env1': EnvironmentLock(requirements='ruff==0.14.14')},
+            environments={
+                'env1': EnvironmentLock(requirements='ruff==0.14.14'),
+            },
         ),
         tmp_path / 'uv-toolbox.lock',
     )
@@ -417,7 +422,10 @@ def test_lock_check_reports_stale_lock(
         ),
     )
 
-    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--check'])
+    result = runner.invoke(
+        app,
+        ['--config', str(config_path), 'lock', '--check'],
+    )
 
     assert result.exit_code == 1
     assert 'Lockfile is out of date' in result.stderr
@@ -435,7 +443,10 @@ def test_lock_check_reports_missing_lock(
     )
     generate_mock = mocker.patch('uv_toolbox.cli.generate_lock')
 
-    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--check'])
+    result = runner.invoke(
+        app,
+        ['--config', str(config_path), 'lock', '--check'],
+    )
 
     assert result.exit_code == 1
     assert 'Lockfile is missing' in result.stderr

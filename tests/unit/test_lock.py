@@ -48,7 +48,9 @@ def test_generate_environment_lock_with_requirements_file(
 
     temp_dir = tmp_path / 'compile'
     temp_dir.mkdir()
-    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
     temporary_directory.return_value.__enter__.return_value = str(temp_dir)
     output_path = temp_dir / 'compiled-requirements.txt'
     output_path.write_text(_COMPILED)
@@ -85,7 +87,9 @@ def test_generate_environment_lock_with_inline_requirements(
 
     temp_dir = tmp_path / 'tmp'
     temp_dir.mkdir()
-    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
     temporary_directory.return_value.__enter__.return_value = str(temp_dir)
     output_path = temp_dir / 'compiled-requirements.txt'
     output_path.write_text(_COMPILED)
@@ -125,7 +129,9 @@ def test_generate_environment_lock_uses_declared_requirements_when_lock_is_injec
     settings = _make_settings(tmp_path, envs=[env])
     temp_dir = tmp_path / 'compile'
     temp_dir.mkdir()
-    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
     temporary_directory.return_value.__enter__.return_value = str(temp_dir)
     (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
     mocker.patch('uv_toolbox.lock.run_checked')
@@ -148,7 +154,9 @@ def test_generate_environment_lock_preserves_dash_file(
     settings = _make_settings(tmp_path, envs=[env])
     temp_dir = tmp_path / 'compile'
     temp_dir.mkdir()
-    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
     temporary_directory.return_value.__enter__.return_value = str(temp_dir)
     (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
     mocker.patch('uv_toolbox.lock.run_checked')
@@ -167,7 +175,9 @@ def test_generate_environment_lock_does_not_pass_virtual_env(
     settings = _make_settings(tmp_path, envs=[env])
     temp_dir = tmp_path / 'compile'
     temp_dir.mkdir()
-    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
     temporary_directory.return_value.__enter__.return_value = str(temp_dir)
     (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
     run_mock = mocker.patch('uv_toolbox.lock.run_checked')

@@ -53,8 +53,7 @@ def lockfiles_equal(left: UvToolboxLock, right: UvToolboxLock) -> bool:
     if left.version != right.version or left.environments.keys() != right.environments.keys():
         return False
     return all(
-        left.environments[name].requirements.rstrip('\n')
-        == right.environments[name].requirements.rstrip('\n')
+        left.environments[name].requirements.rstrip('\n') == right.environments[name].requirements.rstrip('\n')
         for name in left.environments
     )
 
