@@ -106,7 +106,7 @@ def test_install_requirements_uses_requirements_file_on_first_install(
 
     assert run_mock.call_count == 2
     run_mock.assert_any_call(
-        args=['uv', 'pip', 'sync', str(req_file)],
+        args=['uv', 'pip', 'install', '--exact', '-r', str(req_file)],
         extra_env=env.process_env(settings=settings),
         capture_stdout=False,
         capture_stderr=False,
@@ -129,7 +129,7 @@ def test_install_requirements_writes_lockfile_after_first_install(
 ) -> None:
     """Writes inline requirements to a named temp file and passes it to uv.
 
-    Verifies the temp directory is cleaned up after the sync completes.
+    Verifies the temp directory is cleaned up after installation completes.
     """
     env = UvToolboxEnvironment(
         name='env1',
@@ -153,7 +153,7 @@ def test_install_requirements_writes_temp_file_for_inline_requirements(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    """Writes inline requirements to a named temp file, syncs from it, then removes the temp directory."""
+    """Writes inline requirements to a temp file, installs it exactly, then removes the directory."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.13.1')
     settings = _make_settings(tmp_path, env=env)
     run_mock = mocker.patch(
@@ -173,7 +173,7 @@ def test_install_requirements_writes_temp_file_for_inline_requirements(
     temp_req_file = temp_dir / 'requirements_env1.txt'
     assert temp_req_file.read_text() == 'ruff==0.13.1'
     run_mock.assert_any_call(
-        args=['uv', 'pip', 'sync', str(temp_req_file)],
+        args=['uv', 'pip', 'install', '--exact', '-r', str(temp_req_file)],
         extra_env=env.process_env(settings=settings),
         capture_stdout=False,
         capture_stderr=False,
@@ -310,7 +310,7 @@ def test_install_requirements_upgrade_triggers_initial_install_even_if_lockfile_
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    """With upgrade=True, a stale machine lockfile is bypassed in favor of the online sync + freeze path."""
+    """With upgrade=True, a stale machine lockfile is bypassed in favor of install + freeze."""
     env = UvToolboxEnvironment(name='env1', requirements='ruff==0.14.14')
     settings = _make_settings(tmp_path, env=env)
     venv_path = env.venv_path(settings=settings)
@@ -331,10 +331,10 @@ def test_install_requirements_upgrade_triggers_initial_install_even_if_lockfile_
 
     install_requirements(env=env, settings=settings, upgrade=True)
 
-    # Should have called sync + freeze, not the offline sync path
+    # Should have called exact install + freeze, not the offline sync path
     assert run_mock.call_count == 2
     first_call_args = run_mock.call_args_list[0].kwargs['args']
-    assert first_call_args[2] == 'sync'
+    assert first_call_args[2:5] == ['install', '--exact', '-r']
     assert '--offline' not in first_call_args
 
 

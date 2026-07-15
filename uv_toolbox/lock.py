@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import tempfile
 import typing
 from pathlib import Path
@@ -30,18 +29,23 @@ def generate_environment_lock(
     Returns:
         The compiled requirements text (stripped, no trailing newline).
     """
-    temp_dir: Path | None = None
-
-    try:
+    with tempfile.TemporaryDirectory() as temp_dir_raw:
+        temp_dir = Path(temp_dir_raw)
+        output_path = temp_dir / 'compiled-requirements.txt'
         if env.requirements_file is not None:
             req_source = str(env.requirements_file)
         else:
-            temp_dir = Path(tempfile.mkdtemp())
             temp_req_file = temp_dir / f'requirements_{env.name}.txt'
-            temp_req_file.write_text(env.resolved_requirements)
+            # Always resolve the declared source. ``resolved_requirements``
+            # may contain content injected from an existing lockfile, which
+            # would prevent `lock` from refreshing stale dependencies.
+            if env.requirements is None:  # pragma: no cover
+                msg = 'requirements is None — model validation guarantees this is impossible'
+                raise RuntimeError(msg)
+            temp_req_file.write_text(env.requirements)
             req_source = str(temp_req_file)
 
-        return run_checked(
+        run_checked(
             args=[
                 'uv',
                 'pip',
@@ -51,22 +55,14 @@ def generate_environment_lock(
                 '--no-header',
                 '--no-annotate',
                 '-o',
-                '-',
+                str(output_path),
                 req_source,
             ],
             capture_stdout=True,
             capture_stderr=False,
             show_command=settings.show_commands,
         )
-    finally:
-        if temp_dir is not None:
-            shutil.rmtree(temp_dir)
-        # `-o -` asks uv to write to stdout (which is what we actually
-        # capture and use), but uv also drops a literal file named `-` as a
-        # side effect in the caller's own cwd — not something we can avoid
-        # by changing cwd here, since relative -e/-r paths in requirements
-        # text are meant to resolve against the caller's actual directory.
-        Path('-').unlink(missing_ok=True)
+        return output_path.read_text().strip()
 
 
 def generate_lock(settings: UvToolboxSettings) -> UvToolboxLock:

@@ -87,6 +87,7 @@ pinned versions with hashes for every supported platform wheel variant.
 ```bash
 # Initial setup or after changing requirements
 uvtb lock    # resolve and write uv-toolbox.lock
+uvtb lock --check  # verify without writing; suitable for CI
 git add uv-toolbox.lock
 git commit -m "chore: update tool lockfile"
 
@@ -108,6 +109,10 @@ uvtb lock    # re-resolves from current requirements
 
 This replaces `uv-toolbox.lock` with freshly resolved, pinned content. Review
 the diff, commit when satisfied.
+
+`uvtb lock --check` performs the same resolution in memory and exits nonzero
+when the committed lockfile is missing or differs. It never rewrites the file,
+so repository-wide CI checks can safely use it as a drift gate.
 
 ## How the Two Lockfiles Interact
 

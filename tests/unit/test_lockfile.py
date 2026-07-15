@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 from uv_toolbox.lockfile import (
     EnvironmentLock,
     UvToolboxLock,
+    lockfiles_equal,
     read_lockfile,
     write_lockfile,
 )
@@ -113,3 +114,17 @@ def test_write_lockfile_does_not_use_global_representer(tmp_path: Path) -> None:
     plain_str = 'hello\nworld'
     result = yaml.dump({'key': plain_str})
     assert '|' not in result
+
+
+def test_lockfiles_equal_ignores_serialization_newline() -> None:
+    """Generated and YAML-loaded requirements compare equal despite the block-scalar newline."""
+    generated = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements='ruff==1')},
+    )
+    loaded = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements='ruff==1\n')},
+    )
+
+    assert lockfiles_equal(generated, loaded)
+    loaded.environments['fmt'].requirements = 'ruff==2\n'
+    assert not lockfiles_equal(generated, loaded)

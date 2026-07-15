@@ -9,6 +9,7 @@ from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
     from pytest_mock import MockerFixture
 
 _COMPILED = 'ruff==0.14.14 \\\n    --hash=sha256:aaaa'
@@ -45,10 +46,13 @@ def test_generate_environment_lock_with_requirements_file(
     env = UvToolboxEnvironment(name='fmt', requirements_file=req_file)
     settings = _make_settings(tmp_path, envs=[env])
 
-    run_mock = mocker.patch(
-        'uv_toolbox.lock.run_checked',
-        return_value=_COMPILED,
-    )
+    temp_dir = tmp_path / 'compile'
+    temp_dir.mkdir()
+    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    output_path = temp_dir / 'compiled-requirements.txt'
+    output_path.write_text(_COMPILED)
+    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
     result = generate_environment_lock(env=env, settings=settings)
 
     run_mock.assert_called_once_with(
@@ -61,7 +65,7 @@ def test_generate_environment_lock_with_requirements_file(
             '--no-header',
             '--no-annotate',
             '-o',
-            '-',
+            str(output_path),
             str(req_file),
         ],
         capture_stdout=True,
@@ -81,12 +85,11 @@ def test_generate_environment_lock_with_inline_requirements(
 
     temp_dir = tmp_path / 'tmp'
     temp_dir.mkdir()
-    mocker.patch('uv_toolbox.lock.tempfile.mkdtemp', return_value=str(temp_dir))
-    rmtree_mock = mocker.patch('uv_toolbox.lock.shutil.rmtree')
-    run_mock = mocker.patch(
-        'uv_toolbox.lock.run_checked',
-        return_value=_COMPILED,
-    )
+    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    output_path = temp_dir / 'compiled-requirements.txt'
+    output_path.write_text(_COMPILED)
+    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
 
     result = generate_environment_lock(env=env, settings=settings)
 
@@ -102,15 +105,57 @@ def test_generate_environment_lock_with_inline_requirements(
             '--no-header',
             '--no-annotate',
             '-o',
-            '-',
+            str(output_path),
             str(temp_req_file),
         ],
         capture_stdout=True,
         capture_stderr=False,
         show_command=False,
     )
-    rmtree_mock.assert_called_once_with(temp_dir)
     assert result == _COMPILED
+
+
+def test_generate_environment_lock_uses_declared_requirements_when_lock_is_injected(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """Refreshing a lock resolves source requirements rather than existing locked content."""
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff>=0.14\n')
+    env._resolved_requirements = 'ruff==0.14.14\n'
+    settings = _make_settings(tmp_path, envs=[env])
+    temp_dir = tmp_path / 'compile'
+    temp_dir.mkdir()
+    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
+    mocker.patch('uv_toolbox.lock.run_checked')
+
+    generate_environment_lock(env=env, settings=settings)
+
+    assert (temp_dir / 'requirements_fmt.txt').read_text() == 'ruff>=0.14\n'
+
+
+def test_generate_environment_lock_preserves_dash_file(
+    mocker: MockerFixture,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock generation never changes a caller-owned file named `-`."""
+    monkeypatch.chdir(tmp_path)
+    dash_file = tmp_path / '-'
+    dash_file.write_text('keep me')
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
+    settings = _make_settings(tmp_path, envs=[env])
+    temp_dir = tmp_path / 'compile'
+    temp_dir.mkdir()
+    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
+    mocker.patch('uv_toolbox.lock.run_checked')
+
+    generate_environment_lock(env=env, settings=settings)
+
+    assert dash_file.read_text() == 'keep me'
 
 
 def test_generate_environment_lock_does_not_pass_virtual_env(
@@ -120,10 +165,12 @@ def test_generate_environment_lock_does_not_pass_virtual_env(
     """Compiling a lockfile does not set extra_env, since `uv pip compile` should not target a specific venv."""
     env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
     settings = _make_settings(tmp_path, envs=[env])
-    run_mock = mocker.patch(
-        'uv_toolbox.lock.run_checked',
-        return_value=_COMPILED,
-    )
+    temp_dir = tmp_path / 'compile'
+    temp_dir.mkdir()
+    temporary_directory = mocker.patch('uv_toolbox.lock.tempfile.TemporaryDirectory')
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
+    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
 
     generate_environment_lock(env=env, settings=settings)
 

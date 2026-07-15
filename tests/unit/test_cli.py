@@ -10,7 +10,7 @@ from tests.utils import create_fake_venv
 from uv_toolbox import cli as cli_module
 from uv_toolbox.cli import app
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
-from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
+from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock, write_lockfile
 from uv_toolbox.settings import UvToolboxSettings
 
 if TYPE_CHECKING:
@@ -367,7 +367,79 @@ def test_lock_errors_without_config_file(mocker: MockerFixture) -> None:
     result = runner.invoke(app, ['lock'])
 
     assert result.exit_code == 1
-    assert 'Cannot write lockfile' in result.stderr
+    assert 'Cannot locate lockfile' in result.stderr
+
+
+def test_lock_check_succeeds_without_writing(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """`lock --check` exits zero when generated and committed locks match."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    lock_data = UvToolboxLock(
+        environments={'env1': EnvironmentLock(requirements='ruff==0.14.14')},
+    )
+    write_lockfile(lock_data, tmp_path / 'uv-toolbox.lock')
+    mocker.patch('uv_toolbox.cli.generate_lock', return_value=lock_data)
+    write_mock = mocker.patch('uv_toolbox.cli.write_lockfile')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--check'])
+
+    assert result.exit_code == 0
+    assert 'Lockfile is up to date' in result.stdout
+    write_mock.assert_not_called()
+
+
+def test_lock_check_reports_stale_lock(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """`lock --check` exits nonzero when dependency resolution changed."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    write_lockfile(
+        UvToolboxLock(
+            environments={'env1': EnvironmentLock(requirements='ruff==0.14.14')},
+        ),
+        tmp_path / 'uv-toolbox.lock',
+    )
+    mocker.patch(
+        'uv_toolbox.cli.generate_lock',
+        return_value=UvToolboxLock(
+            environments={'env1': EnvironmentLock(requirements='ruff==0.15.0')},
+        ),
+    )
+
+    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--check'])
+
+    assert result.exit_code == 1
+    assert 'Lockfile is out of date' in result.stderr
+
+
+def test_lock_check_reports_missing_lock(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """`lock --check` exits nonzero when the configuration has no lockfile."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    generate_mock = mocker.patch('uv_toolbox.cli.generate_lock')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--check'])
+
+    assert result.exit_code == 1
+    assert 'Lockfile is missing' in result.stderr
+    generate_mock.assert_not_called()
 
 
 def test_lock_handles_uv_toolbox_error(

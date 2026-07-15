@@ -92,6 +92,7 @@ Generate a committed repo lockfile with hashes for all platform variants:
 
 ```bash
 uv-toolbox lock   # writes uv-toolbox.lock next to your config file
+uv-toolbox lock --check  # verifies it is current without writing
 ```
 
 Run a command inside an environment (uses the configured default if set,

@@ -2,14 +2,11 @@ providers:
   workspace:
     cli: devkit-workspace-link
     context_overrides:
-      # devkit hasn't cut a tagged release yet — pin to the topic branch for
-      # now; switch to a version tag (e.g. v0.1.0) once one exists. Each
-      # reusable-workflow namespace is independently pinnable.
-      workspace_ref: topic/repolish
-      python_ref: topic/repolish
+      # Switch to an immutable release ref before merging this migration.
+      devkit_ref: topic/repolish
       # Preserves the OS matrix the old codeguide/pkglink-based config
       # (ci_operating_systems) already ran before this migration.
-      python_operating_systems: '["ubuntu-latest", "windows-latest"]'
+      python_operating_systems: [ubuntu-latest, windows-latest]
       # README already carries a codecov badge and the repo has a
       # CODECOV_TOKEN secret configured — this was silently dropped during
       # the migration until now.
@@ -19,9 +16,7 @@ providers:
   releez:
     cli: devkit-releez-link
     context_overrides:
-      # use_self_action is auto-detected from the presence of action.yaml —
-      # no override needed here.
-      releez_ref: topic/repolish
+      devkit_ref: topic/repolish
 
 providers_order:
   - workspace
