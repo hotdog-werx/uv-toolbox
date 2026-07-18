@@ -14,6 +14,8 @@ if typing.TYPE_CHECKING:  # pragma: no cover
 def generate_environment_lock(
     env: UvToolboxEnvironment,
     settings: UvToolboxSettings,
+    *,
+    existing_requirements: str | None = None,
 ) -> str:
     """Compile pinned, hash-verified requirements for one environment.
 
@@ -25,6 +27,8 @@ def generate_environment_lock(
     Args:
         env: The environment to compile requirements for.
         settings: UV toolbox settings (used for show_commands and requirement source).
+        existing_requirements: Previously locked requirements whose compatible
+            pins should be preserved during validation.
 
     Returns:
         The compiled requirements text (stripped, no trailing newline).
@@ -32,6 +36,11 @@ def generate_environment_lock(
     with tempfile.TemporaryDirectory() as temp_dir_raw:
         temp_dir = Path(temp_dir_raw)
         output_path = temp_dir / 'compiled-requirements.txt'
+        if existing_requirements is not None:
+            # uv treats an existing output file as the preferred set of pins.
+            # This lets `lock --check` validate compatibility without turning
+            # every newly published transitive dependency into lockfile drift.
+            output_path.write_text(existing_requirements)
         if env.requirements_file is not None:
             req_source = str(env.requirements_file)
         else:
@@ -65,11 +74,16 @@ def generate_environment_lock(
         return output_path.read_text().strip()
 
 
-def generate_lock(settings: UvToolboxSettings) -> UvToolboxLock:
+def generate_lock(
+    settings: UvToolboxSettings,
+    *,
+    existing_lock: UvToolboxLock | None = None,
+) -> UvToolboxLock:
     """Compile a lockfile for all configured environments.
 
     Args:
         settings: UV toolbox settings.
+        existing_lock: Existing lock whose compatible pins should be preserved.
 
     Returns:
         A UvToolboxLock containing compiled, hash-bearing requirements for
@@ -77,6 +91,11 @@ def generate_lock(settings: UvToolboxSettings) -> UvToolboxLock:
     """
     lock = UvToolboxLock()
     for env in settings.environments:
-        compiled = generate_environment_lock(env=env, settings=settings)
+        existing_environment = existing_lock.environments.get(env.name) if existing_lock is not None else None
+        compiled = generate_environment_lock(
+            env=env,
+            settings=settings,
+            existing_requirements=(existing_environment.requirements if existing_environment is not None else None),
+        )
         lock.environments[env.name] = EnvironmentLock(requirements=compiled)
     return lock

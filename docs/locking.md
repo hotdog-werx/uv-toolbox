@@ -110,9 +110,11 @@ uvtb lock    # re-resolves from current requirements
 This replaces `uv-toolbox.lock` with freshly resolved, pinned content. Review
 the diff, commit when satisfied.
 
-`uvtb lock --check` performs the same resolution in memory and exits nonzero
-when the committed lockfile is missing or differs. It never rewrites the file,
-so repository-wide CI checks can safely use it as a drift gate.
+`uvtb lock --check` seeds resolution with the committed pins and exits nonzero
+when the lockfile is missing or no longer satisfies the configured requirements.
+Compatible pins are preserved, so publishing a newer transitive dependency does
+not create unrelated CI drift. It never rewrites or upgrades the file; run plain
+`uvtb lock` when you deliberately want the latest compatible versions.
 
 ## How the Two Lockfiles Interact
 

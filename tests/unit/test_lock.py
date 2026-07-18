@@ -188,6 +188,32 @@ def test_generate_environment_lock_does_not_pass_virtual_env(
     assert 'extra_env' not in call_kwargs
 
 
+def test_generate_environment_lock_seeds_existing_pins_for_validation(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """Validation gives uv the committed output so compatible transitive pins remain stable."""
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff>=0.14')
+    settings = _make_settings(tmp_path, envs=[env])
+    temp_dir = tmp_path / 'compile'
+    temp_dir.mkdir()
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
+
+    result = generate_environment_lock(
+        env=env,
+        settings=settings,
+        existing_requirements=_COMPILED,
+    )
+
+    assert (temp_dir / 'compiled-requirements.txt').read_text() == _COMPILED
+    assert result == _COMPILED
+    run_mock.assert_called_once()
+
+
 def test_generate_lock_covers_all_environments(
     mocker: MockerFixture,
     tmp_path: Path,
@@ -227,3 +253,27 @@ def test_generate_lock_returns_environment_lock_instances(
     lock = generate_lock(settings=settings)
 
     assert isinstance(lock.environments['fmt'], EnvironmentLock)
+
+
+def test_generate_lock_passes_existing_environment_pins(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """Existing pins are matched to environments by name during validation."""
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff')
+    settings = _make_settings(tmp_path, envs=[env])
+    existing_lock = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements=_COMPILED)},
+    )
+    generate_mock = mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        return_value=_COMPILED,
+    )
+
+    generate_lock(settings=settings, existing_lock=existing_lock)
+
+    generate_mock.assert_called_once_with(
+        env=settings.environments[0],
+        settings=settings,
+        existing_requirements=_COMPILED,
+    )

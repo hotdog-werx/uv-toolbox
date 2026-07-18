@@ -118,9 +118,15 @@ def lock(
         )
         raise typer.Exit(code=1)
     try:
-        lock_data = generate_lock(settings=settings)
+        existing_lock = read_lockfile(lockfile_path) if check else None
+        lock_data = generate_lock(
+            settings=settings,
+            existing_lock=existing_lock,
+        )
         if check:
-            if not lockfiles_equal(lock_data, read_lockfile(lockfile_path)):
+            if existing_lock is None:  # pragma: no cover - guarded above
+                raise RuntimeError
+            if not lockfiles_equal(lock_data, existing_lock):
                 typer.secho(
                     f'Lockfile is out of date: {lockfile_path}. Run `uv-toolbox lock`.',
                     err=True,

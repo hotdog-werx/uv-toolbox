@@ -182,8 +182,9 @@ uv-toolbox lock --check
 ```
 
 The first command writes `uv-toolbox.lock`; the second is the non-writing CI
-check. Commit the lockfile so `uvtb install` uses the pre-resolved,
-hash-verified requirements automatically.
+check. It preserves compatible committed pins rather than treating newly
+published transitive versions as drift. Commit the lockfile so `uvtb install`
+uses the pre-resolved, hash-verified requirements automatically.
 
 See [Locking](locking.md) for the full workflow.
 
