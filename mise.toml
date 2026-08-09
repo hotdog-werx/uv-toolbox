@@ -39,7 +39,6 @@ git-cliff = "2.12.0"
 actionlint = "1.7.10"
 shellcheck = "0.11.0"
 
-"pipx:git+https://github.com/hotdog-werx/uv-toolbox.git@chore/use-devkit" = "chore/use-devkit"
 "pipx:ruff" = "0.14.14"
 "pipx:releez" = "1.0.1"
 "pipx:zensical" = "0.0.19"
