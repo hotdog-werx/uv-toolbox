@@ -95,8 +95,9 @@ show_missing = true
 
 [tool.releez]
 create-pr = true
-run-changelog-format = true
-hooks = { changelog-format = ["mise", "exec", "--", "mise", "run", "workspace:dprint:format", "{changelog}"] }
+
+[tool.releez.hooks]
+post-changelog = [["mise", "run", "workspace:dprint:format", "{changelog}"]]
 
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]
