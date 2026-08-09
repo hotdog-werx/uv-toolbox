@@ -44,12 +44,17 @@ def _require_lockfile_path(
 def _check_lockfile(
     settings: UvToolboxSettings,
     lockfile_path: Path,
+    *,
+    refresh: bool = False,
+    upgrade: bool = False,
 ) -> None:
     """Validate that committed pins still satisfy the configured requirements."""
     existing_lock = read_lockfile(lockfile_path)
     lock_data = generate_lock(
         settings=settings,
         existing_lock=existing_lock,
+        refresh=refresh,
+        upgrade=upgrade,
     )
     if not lockfiles_equal(lock_data, existing_lock):
         typer.secho(
@@ -64,9 +69,12 @@ def _check_lockfile(
 def _write_lockfile(
     settings: UvToolboxSettings,
     lockfile_path: Path,
+    *,
+    refresh: bool = False,
+    upgrade: bool = False,
 ) -> None:
     """Resolve current requirements and write their pins to the repo lockfile."""
-    lock_data = generate_lock(settings=settings)
+    lock_data = generate_lock(settings=settings, refresh=refresh, upgrade=upgrade)
     write_lockfile(lock_data, lockfile_path)
     typer.echo(f'Wrote {lockfile_path}')
 
@@ -153,15 +161,29 @@ def lock(
             help='Verify that uv-toolbox.lock matches the current configuration without writing it.',
         ),
     ] = False,
+    refresh: Annotated[
+        bool,
+        typer.Option(
+            '--refresh',
+            help='Forward --refresh to `uv pip compile` to bypass cached package metadata.',
+        ),
+    ] = False,
+    upgrade: Annotated[
+        bool,
+        typer.Option(
+            '--upgrade',
+            help='Forward --upgrade to `uv pip compile` to re-resolve every pin to its latest compatible version.',
+        ),
+    ] = False,
 ) -> None:
     """Generate, update, or verify pinned, hash-verified requirements."""
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     lockfile_path = _require_lockfile_path(settings, check=check)
     try:
         if check:
-            _check_lockfile(settings, lockfile_path)
+            _check_lockfile(settings, lockfile_path, refresh=refresh, upgrade=upgrade)
         else:
-            _write_lockfile(settings, lockfile_path)
+            _write_lockfile(settings, lockfile_path, refresh=refresh, upgrade=upgrade)
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
