@@ -353,6 +353,46 @@ def test_lock_writes_lockfile(mocker: MockerFixture, tmp_path: Path) -> None:
     assert 'Wrote' in result.stdout
 
 
+def test_lock_forwards_refresh_flag(mocker: MockerFixture, tmp_path: Path) -> None:
+    """`lock --refresh` forwards refresh=True to `generate_lock`."""
+    venv_root = tmp_path / '.uv-toolbox'
+    config_path = _write_config(
+        tmp_path,
+        venv_path=venv_root,
+        envs=[('env1', 'ruff')],
+    )
+    lock_data = UvToolboxLock(
+        environments={'env1': EnvironmentLock(requirements='ruff==0.14.14\n')},
+    )
+    generate_mock = mocker.patch('uv_toolbox.cli.generate_lock', return_value=lock_data)
+    mocker.patch('uv_toolbox.cli.write_lockfile')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--refresh'])
+
+    assert result.exit_code == 0
+    assert generate_mock.call_args.kwargs['refresh'] is True
+
+
+def test_lock_forwards_upgrade_flag(mocker: MockerFixture, tmp_path: Path) -> None:
+    """`lock --upgrade` forwards upgrade=True to `generate_lock`."""
+    venv_root = tmp_path / '.uv-toolbox'
+    config_path = _write_config(
+        tmp_path,
+        venv_path=venv_root,
+        envs=[('env1', 'ruff')],
+    )
+    lock_data = UvToolboxLock(
+        environments={'env1': EnvironmentLock(requirements='ruff==0.14.14\n')},
+    )
+    generate_mock = mocker.patch('uv_toolbox.cli.generate_lock', return_value=lock_data)
+    mocker.patch('uv_toolbox.cli.write_lockfile')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'lock', '--upgrade'])
+
+    assert result.exit_code == 0
+    assert generate_mock.call_args.kwargs['upgrade'] is True
+
+
 def test_lock_errors_without_config_file(mocker: MockerFixture) -> None:
     """The `lock` command exits with code 1 when settings has no lockfile_path (no config file known)."""
     # Patch settings to return lockfile_path=None (no config file known)

@@ -276,4 +276,120 @@ def test_generate_lock_passes_existing_environment_pins(
         env=settings.environments[0],
         settings=settings,
         existing_requirements=_COMPILED,
+        refresh=False,
+        upgrade=False,
+    )
+
+
+def test_generate_environment_lock_forwards_refresh_flag(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """`refresh=True` passes `--refresh` to `uv pip compile`."""
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
+    settings = _make_settings(tmp_path, envs=[env])
+    temp_dir = tmp_path / 'compile'
+    temp_dir.mkdir()
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    output_path = temp_dir / 'compiled-requirements.txt'
+    output_path.write_text(_COMPILED)
+    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
+
+    generate_environment_lock(env=env, settings=settings, refresh=True)
+
+    assert run_mock.call_args.kwargs['args'] == [
+        'uv',
+        'pip',
+        'compile',
+        '--generate-hashes',
+        '--universal',
+        '--no-header',
+        '--no-annotate',
+        '--refresh',
+        '-o',
+        str(output_path),
+        str(temp_dir / 'requirements_fmt.txt'),
+    ]
+
+
+def test_generate_environment_lock_forwards_upgrade_flag(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """`upgrade=True` passes `--upgrade` to `uv pip compile`."""
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
+    settings = _make_settings(tmp_path, envs=[env])
+    temp_dir = tmp_path / 'compile'
+    temp_dir.mkdir()
+    temporary_directory = mocker.patch(
+        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+    )
+    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
+    output_path = temp_dir / 'compiled-requirements.txt'
+    output_path.write_text(_COMPILED)
+    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
+
+    generate_environment_lock(env=env, settings=settings, upgrade=True)
+
+    assert run_mock.call_args.kwargs['args'] == [
+        'uv',
+        'pip',
+        'compile',
+        '--generate-hashes',
+        '--universal',
+        '--no-header',
+        '--no-annotate',
+        '--upgrade',
+        '-o',
+        str(output_path),
+        str(temp_dir / 'requirements_fmt.txt'),
+    ]
+
+
+def test_generate_lock_forwards_refresh_to_environments(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """generate_lock forwards `refresh` to each environment's compile call."""
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff')
+    settings = _make_settings(tmp_path, envs=[env])
+    generate_mock = mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        return_value=_COMPILED,
+    )
+
+    generate_lock(settings=settings, refresh=True)
+
+    generate_mock.assert_called_once_with(
+        env=settings.environments[0],
+        settings=settings,
+        existing_requirements=None,
+        refresh=True,
+        upgrade=False,
+    )
+
+
+def test_generate_lock_forwards_upgrade_to_environments(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """generate_lock forwards `upgrade` to each environment's compile call."""
+    env = UvToolboxEnvironment(name='fmt', requirements='ruff')
+    settings = _make_settings(tmp_path, envs=[env])
+    generate_mock = mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        return_value=_COMPILED,
+    )
+
+    generate_lock(settings=settings, upgrade=True)
+
+    generate_mock.assert_called_once_with(
+        env=settings.environments[0],
+        settings=settings,
+        existing_requirements=None,
+        refresh=False,
+        upgrade=True,
     )
