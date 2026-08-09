@@ -1,3 +1,34 @@
+## [0.2.0] - 2026-08-09
+
+
+### 🚀 Features
+
+- Mise plugin (#8) by [@jamestrousdale](https://github.com/jamestrousdale) in [#8](https://github.com/hotdog-werx/uv-toolbox/pull/8)
+
+- Lockfiles (#9) by [@jamestrousdale](https://github.com/jamestrousdale) in [#9](https://github.com/hotdog-werx/uv-toolbox/pull/9)
+
+- Refresh and upgrade flags (#12) by [@jamestrousdale](https://github.com/jamestrousdale) in [#12](https://github.com/hotdog-werx/uv-toolbox/pull/12)
+
+
+### 📚 Documentation
+
+- Add recommendation on CI caching by [@jamestrousdale](https://github.com/jamestrousdale)
+
+- Update CI caching recipe by [@jamestrousdale](https://github.com/jamestrousdale)
+
+
+### ⚙️ Miscellaneous Tasks
+
+- Use devkit (#10) by [@jamestrousdale](https://github.com/jamestrousdale) in [#10](https://github.com/hotdog-werx/uv-toolbox/pull/10)
+
+- Remove mise uvtb install (its in repo) by [@jamestrousdale](https://github.com/jamestrousdale)
+
+- Install editable uv-toolbox for mise hooks usage by [@jamestrousdale](https://github.com/jamestrousdale)
+
+- Delete that line by [@jamestrousdale](https://github.com/jamestrousdale)
+
+- Install uv-toolbox as editable in mise by [@jamestrousdale](https://github.com/jamestrousdale)
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
