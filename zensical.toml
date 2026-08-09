@@ -1,0 +1,52 @@
+[project]
+site_name = "hotdog-werx/uv-toolbox"
+site_description = "Python tool environment manager"
+site_url = "https://hotdog-werx.github.io/uv-toolbox"
+repo_url = "https://github.com/hotdog-werx/uv-toolbox"
+repo_name = "hotdog-werx/uv-toolbox"
+
+nav = [
+  { "Getting Started" = [{ "Quick Start" = "quick-start.md" }] },
+  { "Integrations" = [{ "mise" = "mise.md" }] },
+]
+
+[project.theme]
+language = "en"
+features = [
+  "announce.dismiss",
+  "content.action.view",
+  "content.code.annotate",
+  "content.code.copy",
+  "content.code.select",
+  "content.footnote.tooltips",
+  "content.tabs.link",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.top",
+  "search.highlight",
+]
+
+[project.theme.icon]
+tag.default = "lucide/hash"
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "indigo"
+accent = "orange"
+toggle.icon = "lucide/moon-star"
+toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/hotdog-werx"

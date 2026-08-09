@@ -42,6 +42,7 @@ def test_from_context_raises_when_no_config_found(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Raises MissingConfigFileError when no config file is discoverable in the current directory."""
     monkeypatch.chdir(tmp_path)
     ctx = cast('typer.Context', SimpleNamespace(obj={}))
 
@@ -53,6 +54,7 @@ def test_from_context_raises_when_config_file_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Raises ConfigFileNotFoundError when an explicitly configured config_file path does not exist."""
     monkeypatch.chdir(tmp_path)
     ctx = cast(
         'typer.Context',
@@ -67,6 +69,7 @@ def test_cli_config_option_is_used(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
+    """The `--config` CLI option is honored, routing settings loading through the given file."""
     config_path = _write_config(tmp_path)
     mocker.patch.object(
         sys,
@@ -99,6 +102,7 @@ def test_cli_config_env_var_is_used(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """The UV_TOOLBOX_CONFIG_FILE environment variable is honored when `--config` is not passed."""
     config_path = _write_config(tmp_path)
     monkeypatch.setenv('UV_TOOLBOX_CONFIG_FILE', str(config_path))
     mocker.patch.object(
@@ -122,6 +126,7 @@ def test_from_context_raises_when_pyproject_missing_tool_section(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Raises MissingConfigFileError when pyproject.toml exists but lacks a [tool.uv-toolbox] section."""
     pyproject_path = tmp_path / 'pyproject.toml'
     pyproject_path.write_text('[tool.other]\nvalue = "nope"\n')
     monkeypatch.chdir(tmp_path)
@@ -135,6 +140,7 @@ def test_from_context_raises_when_pyproject_tool_is_not_mapping(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Raises MissingConfigFileError when pyproject.toml's `tool` key is not a table."""
     pyproject_path = tmp_path / 'pyproject.toml'
     pyproject_path.write_text('tool = "not-a-table"\n')
     monkeypatch.chdir(tmp_path)
@@ -148,6 +154,7 @@ def test_from_context_raises_when_pyproject_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Raises MissingConfigFileError when pyproject.toml contains malformed TOML."""
     pyproject_path = tmp_path / 'pyproject.toml'
     pyproject_path.write_text('[tool.uv-toolbox\n')
     monkeypatch.chdir(tmp_path)
@@ -161,6 +168,7 @@ def test_from_context_reads_pyproject_when_config_set(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Loads settings from a pyproject.toml's [tool.uv-toolbox] section when it is the configured config file."""
     pyproject_path = tmp_path / 'pyproject.toml'
     venv_path = (tmp_path / '.uv-toolbox').as_posix()
     pyproject_path.write_text(
@@ -192,6 +200,7 @@ def test_from_context_reads_json_and_toml_configs(
     tmp_path: Path,
     suffix: str,
 ) -> None:
+    """Loads settings from standalone .json and .toml config files, not just YAML."""
     config_path = tmp_path / f'config.{suffix}'
     if suffix == 'json':
         config_path.write_text(
@@ -230,6 +239,7 @@ def test_from_context_rejects_unsupported_config_extension(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Raises ValueError when the configured config file has an unsupported extension like .ini."""
     config_path = tmp_path / 'config.ini'
     config_path.write_text('[dummy]\nvalue = true\n')
     monkeypatch.chdir(tmp_path)

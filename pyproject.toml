@@ -53,13 +53,50 @@ filterwarnings = [
   "ignore:Config key `pyproject_toml_table_header` is set in model_config but will be ignored:UserWarning",
 ]
 
+# `extend` points at the whole-resources-directory symlink `repolish link`
+# creates for every installed provider (populated on every `mise install`
+# via the postinstall hook, no `repolish apply` required).
 [tool.ruff]
-extend = "./.pkglink/.codeguide/configs/ruff.toml"
+extend = ".repolish/hotdogwerx-devkit-python/configs/ruff.toml"
+
+# per-file-ignores lives here, not in the shared ruff.toml: ruff's `extend`
+# resolves relative globs (like "**/tests/*.py") against the *extended*
+# file's own directory, not this project's root, so they'd never match
+# anything if they lived in the shared config.
+[tool.ruff.lint.per-file-ignores]
+# Tests still need a docstring (google-style, per [lint.pydocstyle] in the
+# shared config) — D101/D102/D103 are deliberately NOT ignored here. Only
+# the requirement to document every argument is loosened (D417); pydoclint
+# skips tests entirely (see .repolish/hotdogwerx-devkit-python/configs/pydoclint.toml's
+# exclude), since its signature/docstring arg-matching checks are stricter
+# than ruff's.
+"**/tests/*.py" = [
+  "ANN001", # Allow untyped fixture arguments
+  "ANN201", # Allow tests to not have a return type
+  "ARG001", # Ignore unused arguments in tests - sometimes required for fixtures
+  "D417", # Don't require documenting every argument in test docstrings
+  "INP001", # Test dirs don't need __init__.py
+  "PT004", # Allow none-returning fixtures to not lead with underscore due to ty conflict
+  "S101", # Please sir may I use assert in my tests?
+  "S701", # Jinja Environment() without autoescape is fine for non-HTML template tests
+]
+
+[tool.coverage.html]
+directory = ".coverage-files/htmlcov"
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+  "if typing.TYPE_CHECKING:",
+  "\\.\\.\\.",
+]
+show_missing = true
 
 [tool.releez]
 create-pr = true
 run-changelog-format = true
-hooks = { changelog-format = ["mise", "exec", "--", "poe", "format-dprint", "{changelog}"] }
+hooks = { changelog-format = ["mise", "exec", "--", "mise", "run", "workspace:dprint:format", "{changelog}"] }
 
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]

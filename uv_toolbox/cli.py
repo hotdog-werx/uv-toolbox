@@ -7,7 +7,7 @@ import typer
 
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
 from uv_toolbox.lock import generate_lock
-from uv_toolbox.lockfile import write_lockfile
+from uv_toolbox.lockfile import lockfiles_equal, read_lockfile, write_lockfile
 from uv_toolbox.process import run_checked
 from uv_toolbox.settings import UvToolboxSettings
 from uv_toolbox.shims import create_shims
@@ -15,6 +15,60 @@ from uv_toolbox.utils import _filter_nulls
 from uv_toolbox.uv_helpers import initialize_virtualenv
 
 app = typer.Typer(help='CLI tool for managing UV tool environments.')
+
+
+def _require_lockfile_path(
+    settings: UvToolboxSettings,
+    *,
+    check: bool,
+) -> Path:
+    """Return the configured lockfile path or exit with a user-facing error."""
+    lockfile_path = settings.lockfile_path
+    if lockfile_path is None:
+        typer.secho(
+            'Cannot locate lockfile: no config file location known.',
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    if check and not lockfile_path.exists():
+        typer.secho(
+            f'Lockfile is missing: {lockfile_path}',
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    return lockfile_path
+
+
+def _check_lockfile(
+    settings: UvToolboxSettings,
+    lockfile_path: Path,
+) -> None:
+    """Validate that committed pins still satisfy the configured requirements."""
+    existing_lock = read_lockfile(lockfile_path)
+    lock_data = generate_lock(
+        settings=settings,
+        existing_lock=existing_lock,
+    )
+    if not lockfiles_equal(lock_data, existing_lock):
+        typer.secho(
+            f'Lockfile is out of date: {lockfile_path}. Run `uv-toolbox lock`.',
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    typer.echo(f'Lockfile is up to date: {lockfile_path}')
+
+
+def _write_lockfile(
+    settings: UvToolboxSettings,
+    lockfile_path: Path,
+) -> None:
+    """Resolve current requirements and write their pins to the repo lockfile."""
+    lock_data = generate_lock(settings=settings)
+    write_lockfile(lock_data, lockfile_path)
+    typer.echo(f'Wrote {lockfile_path}')
 
 
 @app.callback()
@@ -91,21 +145,23 @@ def lock(
             help='Path to the directory where virtual environments are stored.',
         ),
     ] = None,
+    *,
+    check: Annotated[
+        bool,
+        typer.Option(
+            '--check',
+            help='Verify that uv-toolbox.lock matches the current configuration without writing it.',
+        ),
+    ] = False,
 ) -> None:
-    """Generate or update uv-toolbox.lock with pinned, hash-verified requirements."""
+    """Generate, update, or verify pinned, hash-verified requirements."""
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
-    lockfile_path = settings.lockfile_path
-    if lockfile_path is None:
-        typer.secho(
-            'Cannot write lockfile: no config file location known.',
-            err=True,
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(code=1)
+    lockfile_path = _require_lockfile_path(settings, check=check)
     try:
-        lock_data = generate_lock(settings=settings)
-        write_lockfile(lock_data, lockfile_path)
-        typer.echo(f'Wrote {lockfile_path}')
+        if check:
+            _check_lockfile(settings, lockfile_path)
+        else:
+            _write_lockfile(settings, lockfile_path)
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc

@@ -178,11 +178,13 @@ pinned versions and hashes for all platform variants:
 
 ```bash
 uv-toolbox lock
+uv-toolbox lock --check
 ```
 
-This writes `uv-toolbox.lock` next to your config file. Commit it to version
-control — when `uv-toolbox.lock` is present, `uvtb install` uses the
-pre-resolved, hash-verified requirements automatically.
+The first command writes `uv-toolbox.lock`; the second is the non-writing CI
+check. It preserves compatible committed pins rather than treating newly
+published transitive versions as drift. Commit the lockfile so `uvtb install`
+uses the pre-resolved, hash-verified requirements automatically.
 
 See [Locking](locking.md) for the full workflow.
 

@@ -48,6 +48,16 @@ class UvToolboxLock:
     environments: dict[str, EnvironmentLock] = field(default_factory=dict)
 
 
+def lockfiles_equal(left: UvToolboxLock, right: UvToolboxLock) -> bool:
+    """Return whether two lockfiles contain equivalent resolved requirements."""
+    if left.version != right.version or left.environments.keys() != right.environments.keys():
+        return False
+    return all(
+        left.environments[name].requirements.rstrip('\n') == right.environments[name].requirements.rstrip('\n')
+        for name in left.environments
+    )
+
+
 def write_lockfile(lock: UvToolboxLock, path: Path) -> None:
     """Serialize a UvToolboxLock to a YAML file at path.
 

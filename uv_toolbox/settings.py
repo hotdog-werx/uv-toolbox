@@ -63,6 +63,11 @@ _ALIASES = AliasGenerator(
     serialization_alias=_to_kebab,
 )
 
+# Bump when machine-lock or environment materialization semantics change.
+# Including this in the CAS hash prevents older, structurally incomplete
+# machine locks from being reused forever after an upgrade.
+_CACHE_FORMAT_VERSION = 2
+
 
 class UvToolboxEnvironment(BaseModel):
     """Definition of a UV toolbox environment.
@@ -79,8 +84,8 @@ class UvToolboxEnvironment(BaseModel):
     name: str
     requirements: str | None = None
     requirements_file: Path | None = None
-    environment: dict[str, str] = {}
-    executables: list[str] = []
+    environment: dict[str, str] = Field(default_factory=dict)
+    executables: list[str] = Field(default_factory=list)
 
     # Injected at settings load time from the repo lockfile; not part of the
     # config schema. When set, _get_requirements_hash uses this content instead
@@ -136,7 +141,8 @@ class UvToolboxEnvironment(BaseModel):
             normalized = self._normalize_resolved_requirements(
                 self._resolved_requirements,
             )
-            return hashlib.sha256(normalized.encode()).hexdigest()[:12]
+            cache_input = f'v{_CACHE_FORMAT_VERSION}\n{normalized}'
+            return hashlib.sha256(cache_input.encode()).hexdigest()[:12]
 
         if self.requirements:
             normalized = self._normalize_requirements(self.requirements)
@@ -151,7 +157,8 @@ class UvToolboxEnvironment(BaseModel):
             )
 
         # Use SHA-256 for hashing (truncated to 12 chars for readability)
-        return hashlib.sha256(normalized.encode()).hexdigest()[:12]
+        cache_input = f'v{_CACHE_FORMAT_VERSION}\n{normalized}'
+        return hashlib.sha256(cache_input.encode()).hexdigest()[:12]
 
     @property
     def resolved_requirements(self) -> str:

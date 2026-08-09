@@ -6,27 +6,80 @@ python.uv_venv_auto = true
 GITHUB_REPO_OWNER = "hotdog-werx"
 GITHUB_REPO_NAME = "{{ config_root | basename }}"
 GITHUB_REPO = "{{ env.GITHUB_REPO_OWNER }}/{{ env.GITHUB_REPO_NAME }}"
-GIT_CLIFF_CONFIG = "./.pkglink/.codeguide/configs/cliff.toml"
+GIT_CLIFF_CONFIG = "./cliff.toml"
 
-[tasks]
-pkglink.run = "mise exec -- pkglink sync"
-setup-hook.run = "mise exec -- poe setup-hook"
+# uv-toolbox install provisions the "repolish" env (repolish + devkit
+# provider packages) before repolish link can use it. repolish link then
+# materializes provider-resource symlinks (.editorconfig, dprint.json) —
+# never committed to git (their symlink source is an absolute path,
+# portable only within the machine that created it), so every environment
+# links them fresh on every `mise install`.
+#
+# [[hooks.postinstall]] (array-of-tables, one entry per subprocess) is used
+# instead of a flat postinstall = ["...", "..."] array — newer mise releases
+# (2026.7.5 in CI, not 2026.5.15 locally) silently ran only the last entry
+# of the flat-array form.
+[[hooks.postinstall]]
+run = "uv-toolbox install"
 
-[hooks]
-postinstall = ["mise run pkglink", "mise run setup-hook"]
+[[hooks.postinstall]]
+run = "uv-toolbox exec --env repolish -- repolish link"
+
+[[hooks.postinstall]]
+run = "mise run workspace:setup-hook"
 
 [tools]
 uv = "0.9.27"
-dprint = "0.54.0"
+dprint = "0.55.1"
 starship = "1.24.2"
 git-cliff = "2.12.0"
 actionlint = "1.7.10"
 shellcheck = "0.11.0"
 
-"pipx:poethepoet" = "0.40.0"
-"pipx:pkglink" = "1.1.0"
-"pipx:tbelt" = "0.0.3"
+"pipx:git+https://github.com/hotdog-werx/uv-toolbox.git@chore/use-devkit" = "chore/use-devkit"
 "pipx:ruff" = "0.14.14"
 "pipx:releez" = "1.0.1"
 "pipx:zensical" = "0.0.19"
-"pipx:ty" = "0.0.14"
+"pipx:ty" = "0.0.59"
+"pipx:complexipy" = "4.0.2"
+"pipx:pydoclint" = "0.9.1"
+
+# Devkit tasks are picked up from the .repolish/devkit-<name>/
+# whole-resources-directory symlink `repolish link` creates on every `mise
+# install` — no copy-paste needed, and future devkit task changes
+# propagate automatically. "mise-tasks" (the default) is kept explicitly —
+# task_config includes *replaces* the default file-task dirs rather than
+# adding to them.
+[task_config]
+includes = [
+  "mise-tasks",
+  ".repolish/hotdogwerx-devkit-workspace/mise-tasks",
+  ".repolish/hotdogwerx-devkit-workspace/mise-tasks.toml",
+  ".repolish/hotdogwerx-devkit-python/mise-tasks",
+]
+
+[tasks.format]
+depends = ["python:format", "workspace:dprint:format"]
+
+[tasks.setup]
+depends = ["python:uv-sync", "workspace:pnpm-install"]
+run = "echo Ready!"
+
+[tasks.ci-checks]
+depends = [
+  "workspace:dprint:check",
+  "python:check:ruff",
+  "python:check:ty",
+  "python:check:complexity",
+  "python:check:pydoclint",
+  "python:check:coverage",
+  "workspace:actionlint:check",
+]
+
+[tasks.repo-checks]
+depends = [
+  "workspace:dprint:check",
+  "workspace:actionlint:check",
+  "workspace:repolish:check",
+  "workspace:uv-toolbox-lock:check",
+]

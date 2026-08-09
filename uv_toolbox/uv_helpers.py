@@ -118,7 +118,7 @@ def _initial_install(
 ) -> None:
     """Install from the configured requirements source and export a lockfile.
 
-    Performs a full online sync, then freezes the resolved packages into a
+    Performs a full online resolution, then freezes the resolved packages into a
     lockfile so future installs can use the offline-first path.
 
     Args:
@@ -137,8 +137,12 @@ def _initial_install(
             temp_req_file.write_text(env.resolved_requirements)
             req_source = str(temp_req_file)
 
+        # `uv pip sync` treats the input as the complete environment and does
+        # not resolve undeclared transitive dependencies. Install with
+        # `--exact` instead: uv resolves the full graph while still removing
+        # packages that are not part of that graph.
         run_checked(
-            args=['uv', 'pip', 'sync', req_source],
+            args=['uv', 'pip', 'install', '--exact', '-r', req_source],
             extra_env=env.process_env(settings=settings),
             capture_stdout=False,
             capture_stderr=False,
