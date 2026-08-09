@@ -20,9 +20,6 @@ GIT_CLIFF_CONFIG = "./cliff.toml"
 # (2026.7.5 in CI, not 2026.5.15 locally) silently ran only the last entry
 # of the flat-array form.
 [[hooks.postinstall]]
-run = "uv pip install -e ."
-
-[[hooks.postinstall]]
 run = "uv-toolbox install"
 
 [[hooks.postinstall]]
@@ -39,6 +36,7 @@ git-cliff = "2.12.0"
 actionlint = "1.7.10"
 shellcheck = "0.11.0"
 
+"pipx:uv-toolbox" = { version = "0.0.0.dev0", uvx_args = "--with-editable ." }
 "pipx:ruff" = "0.14.14"
 "pipx:releez" = "1.0.1"
 "pipx:zensical" = "0.0.19"
