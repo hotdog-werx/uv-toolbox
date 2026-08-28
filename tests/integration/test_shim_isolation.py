@@ -36,7 +36,7 @@ def test_integration_shim_runs_in_correct_venv(
           - name: tools
             requirements: |
               ruff
-            executables: [python]
+            executables_override: [python]
     """).strip()
         + '\n',
     )

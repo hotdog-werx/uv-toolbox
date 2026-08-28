@@ -112,10 +112,10 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
     env_lines = [
         '  - name: env1',
         "    requirements: 'ruff'",
-        '    executables: [ruff]',
+        '    executables_override: [ruff]',
         '  - name: env2',
         "    requirements: 'black'",
-        '    executables: [black]',
+        '    executables_override: [black]',
     ]
     contents = '\n'.join(
         [
@@ -135,12 +135,12 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
                 {
                     'name': 'env1',
                     'requirements': 'ruff',
-                    'executables': ['ruff'],
+                    'executables_override': ['ruff'],
                 },
                 {
                     'name': 'env2',
                     'requirements': 'black',
-                    'executables': ['black'],
+                    'executables_override': ['black'],
                 },
             ],
         },
@@ -251,7 +251,7 @@ def test_shim_list_paths_prints_one_dir_per_line(tmp_path: Path) -> None:
     env_lines = [
         '  - name: env1',
         "    requirements: 'ruff'",
-        '    executables: [ruff]',
+        '    executables_override: [ruff]',
     ]
     config_path = tmp_path / 'uvtb.yaml'
     config_path.write_text(
@@ -265,7 +265,7 @@ def test_shim_list_paths_prints_one_dir_per_line(tmp_path: Path) -> None:
                 {
                     'name': 'env1',
                     'requirements': 'ruff',
-                    'executables': ['ruff'],
+                    'executables_override': ['ruff'],
                 },
             ],
         },

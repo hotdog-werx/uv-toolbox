@@ -1,20 +1,138 @@
-"""Shim generation for UV Toolbox.
-
-Creates wrapper scripts for explicitly listed executables in virtual environments.
-"""
+"""Shim generation for UV Toolbox."""
 
 from __future__ import annotations
 
 import os
 import stat
 import typing
+from importlib.metadata import Distribution, distributions
+from json import JSONDecodeError, loads
+from urllib.parse import parse_qs, urlsplit, urlunsplit
+
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
 
 from uv_toolbox.utils import _venv_bin_path
 
 if typing.TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
+
+
+def _site_packages_paths(venv_path: Path) -> list[Path]:
+    """Return site-packages directories belonging to a virtual environment."""
+    if os.name == 'nt':
+        candidates = [venv_path / 'Lib' / 'site-packages']
+    else:
+        candidates = sorted((venv_path / 'lib').glob('python*/site-packages'))
+    return [path for path in candidates if path.is_dir()]
+
+
+def _logical_requirement_lines(content: str) -> Iterator[str]:
+    """Yield logical, non-comment lines from requirements-file content."""
+    pending = ''
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#'):
+            continue
+        pending += line
+        if pending.endswith('\\'):
+            pending = pending[:-1].rstrip() + ' '
+            continue
+        yield pending
+        pending = ''
+    if pending:
+        yield pending
+
+
+def _requirement_specs(env: UvToolboxEnvironment) -> Iterator[str]:
+    """Yield the environment's first-order requirement specifications."""
+    content = env.requirements_file.read_text() if env.requirements_file is not None else env.requirements or ''
+    yield from _logical_requirement_lines(content)
+
+
+def _bare_vcs_key(spec: str) -> tuple[str, str | None] | None:
+    """Return a comparable URL/subdirectory key for a bare VCS requirement."""
+    editable_prefixes = ('-e ', '--editable ')
+    for prefix in editable_prefixes:
+        if spec.startswith(prefix):
+            spec = spec.removeprefix(prefix).strip()
+            break
+    if not spec.startswith('git+'):
+        return None
+
+    parsed = urlsplit(spec.removeprefix('git+'))
+    path = parsed.path
+    git_suffix = path.rfind('.git@')
+    if git_suffix >= 0:
+        path = path[: git_suffix + len('.git')]
+    url = urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, '')).rstrip('/')
+    subdirectory = parse_qs(parsed.fragment).get('subdirectory', [None])[0]
+    return url, subdirectory
+
+
+def _distribution_direct_url(distribution: Distribution) -> tuple[str, str | None] | None:
+    """Read a distribution's PEP 610 direct URL metadata."""
+    content = distribution.read_text('direct_url.json')
+    if content is None:
+        return None
+    try:
+        data = loads(content)
+    except JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    url = data.get('url')
+    if not isinstance(url, str):
+        return None
+    subdirectory = data.get('subdirectory')
+    return url.rstrip('/'), subdirectory if isinstance(subdirectory, str) else None
+
+
+def _first_order_package_names(env: UvToolboxEnvironment) -> tuple[set[str], set[tuple[str, str | None]]]:
+    """Return named and bare-VCS first-order requirements."""
+    names: set[str] = set()
+    vcs_keys: set[tuple[str, str | None]] = set()
+    for spec in _requirement_specs(env):
+        if spec.startswith(('-r ', '--requirement ', '-c ', '--constraint ', '--')):
+            continue
+        try:
+            names.add(canonicalize_name(Requirement(spec).name))
+        except InvalidRequirement:
+            vcs_key = _bare_vcs_key(spec)
+            if vcs_key is not None:
+                vcs_keys.add(vcs_key)
+    return names, vcs_keys
+
+
+def _auto_executables(env: UvToolboxEnvironment, venv_path: Path) -> list[str]:
+    """Discover console scripts declared by first-order installed packages."""
+    package_names, vcs_keys = _first_order_package_names(env)
+    omitted = set(env.omit_executables)
+    executable_names: set[str] = set()
+    for distribution in distributions(path=[str(path) for path in _site_packages_paths(venv_path)]):
+        distribution_name = distribution.metadata['Name']
+        is_first_order = (
+            bool(distribution_name and canonicalize_name(distribution_name) in package_names)
+            or _distribution_direct_url(distribution) in vcs_keys
+        )
+        if not is_first_order:
+            continue
+        executable_names.update(
+            entry_point.name
+            for entry_point in distribution.entry_points
+            if entry_point.group == 'console_scripts' and entry_point.name not in omitted
+        )
+    return sorted(executable_names)
+
+
+def _executables(env: UvToolboxEnvironment, venv_path: Path) -> list[str]:
+    """Return the exact executable names to expose for an environment."""
+    if env.executables_override is not None:
+        return env.executables_override
+    return _auto_executables(env, venv_path)
 
 
 def _create_unix_shim(
@@ -160,12 +278,10 @@ def _create_shims_for_environment(
     if not venv_path.exists():
         return None
 
-    # Skip if no executables listed
-    if not env.executables:
-        return None
-
-    # Shim directory is inside the venv
+    executable_names = _executables(env, venv_path)
     shim_dir = venv_path / 'shims'
+    if not executable_names and not shim_dir.exists():
+        return None
     shim_dir.mkdir(parents=True, exist_ok=True)
 
     # Clear existing shims in this venv
@@ -175,14 +291,14 @@ def _create_shims_for_environment(
 
     # Create shims for this environment's executables
     bin_path = _venv_bin_path(venv_path)
-    for exe_name in env.executables:
+    for exe_name in executable_names:
         _create_shim_for_executable(exe_name, venv_path, bin_path, shim_dir)
 
-    return shim_dir
+    return shim_dir if executable_names else None
 
 
 def create_shims(settings: UvToolboxSettings) -> list[Path]:
-    """Create per-venv shim scripts for explicitly listed executables.
+    """Create per-venv shim scripts for configured environments.
 
     Args:
         settings: The UV toolbox settings.

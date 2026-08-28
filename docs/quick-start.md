@@ -61,7 +61,9 @@ Or set a default environment in your config:
 default_environment: formatting
 environments:
   - name: formatting
-    requirements: ruff black
+    requirements: |
+      ruff
+      black
 ```
 
 Then run without `--env`:
@@ -72,9 +74,7 @@ uv-toolbox exec -- ruff check .
 
 ### Add to PATH
 
-To make tools available directly in your PATH, you need to:
-
-1. Specify which executables to expose in your config:
+First-order requirements automatically expose their declared console scripts:
 
 ```yaml
 environments:
@@ -82,13 +82,11 @@ environments:
     requirements: |
       ruff==0.13.0
       black
-    executables: [ruff, black] # List executables to expose
   - name: testing
     requirements: pytest
-    executables: [pytest]
 ```
 
-2. Add shims to your PATH:
+Add their shims to your PATH:
 
 ```bash
 eval "$(uv-toolbox shim)"
@@ -102,8 +100,8 @@ black .
 pytest
 ```
 
-**Note**: Only executables listed in the `executables` field will be added to
-PATH. This prevents Python/pip from the venv from polluting your PATH.
+Only scripts declared by first-order packages are added. Scripts from transitive
+dependencies and the venv's Python/pip executables are excluded.
 
 **Tip**: If you use [mise](https://mise.jdx.dev), the [mise plugin](mise.md)
 handles this automatically on every shell activation — no `eval` needed.
@@ -119,7 +117,9 @@ By default, venvs are stored in `~/.cache/uv-toolbox/` using
 # Default - no venv_path needed
 environments:
   - name: dev
-    requirements: ruff pytest
+    requirements: |
+      ruff
+      pytest
 ```
 
 For project-local storage:
@@ -128,7 +128,9 @@ For project-local storage:
 venv_path: .uv-toolbox # Relative to config file
 environments:
   - name: dev
-    requirements: ruff pytest
+    requirements: |
+      ruff
+      pytest
 ```
 
 ### Requirements Files
@@ -149,14 +151,14 @@ Set environment variables for specific environments:
 environments:
   - name: testing
     requirements: pytest
-    executables: [pytest]
     environment:
       PYTEST_ADDOPTS: '-v --tb=short'
 ```
 
 ### Executables
 
-Specify which executables to expose via shims:
+First-order package scripts are exposed automatically. Use `omit_executables` to
+remove selected scripts:
 
 ```yaml
 environments:
@@ -164,12 +166,22 @@ environments:
     requirements: |
       ruff==0.13.0
       black
-    executables: [ruff, black] # Only these will be available via shims
+    omit_executables: [black]
 ```
 
-This field is optional and only needed if you plan to use `uv-toolbox shim`. It
-gives you explicit control over which tools are added to PATH, preventing
-Python/pip from the venv from polluting your environment.
+Use `executables_override` when you need an exact list. An empty list disables
+all shims for that environment:
+
+```yaml
+environments:
+  - name: testing
+    requirements: pytest
+    executables_override: []
+```
+
+The legacy `executables` key is accepted as an alias for
+`executables_override`, but emits a deprecation warning and will be removed in
+uv-toolbox 1.0.
 
 ### Generate a repo lockfile
 

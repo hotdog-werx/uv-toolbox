@@ -77,15 +77,25 @@ class UvToolboxEnvironment(BaseModel):
             requirements_file).
         requirements_file: A path to a pip requirements file (mutually
             exclusive with requirements).
-        executables: List of executable names to create shims for. If not
-            specified, no shims will be created for this environment.
+        executables_override: Exact executable names to expose instead of
+            discovering scripts from first-order requirements. An empty list
+            exposes no executables.
+        omit_executables: Executable names to omit from automatic discovery.
     """
 
     name: str
     requirements: str | None = None
     requirements_file: Path | None = None
     environment: dict[str, str] = Field(default_factory=dict)
-    executables: list[str] = Field(default_factory=list)
+    executables_override: list[str] | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            'executables_override',
+            'executables-override',
+            'executables',
+        ),
+    )
+    omit_executables: list[str] = Field(default_factory=list)
 
     # Injected at settings load time from the repo lockfile; not part of the
     # config schema. When set, _get_requirements_hash uses this content instead
@@ -96,6 +106,19 @@ class UvToolboxEnvironment(BaseModel):
         alias_generator=_ALIASES,
         populate_by_name=True,
     )
+
+    @model_validator(mode='before')
+    @classmethod
+    def warn_about_legacy_executables(cls, data: object) -> object:
+        """Warn when the legacy executable override key is used."""
+        if isinstance(data, dict) and 'executables' in data:
+            warnings.warn(
+                "The 'executables' configuration key is deprecated and will be "
+                "removed in uv-toolbox 1.0; use 'executables_override' instead.",
+                FutureWarning,
+                stacklevel=2,
+            )
+        return data
 
     @model_validator(mode='after')
     def check_requirements(self) -> UvToolboxEnvironment:

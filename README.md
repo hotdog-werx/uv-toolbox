@@ -18,12 +18,10 @@ environments:
     requirements: |
       ruff==0.13.0
       black
-    executables: [ruff, black]
   - name: env2
     requirements: |
       isort
       flake8
-    executables: [isort, flake8]
 ```
 
 ### Configuration Options
@@ -59,18 +57,29 @@ venv_path: .uv-toolbox
 
 **Executables:**
 
-The `executables` field controls which tools are exposed via shims:
+By default, shims expose the `console_scripts` declared by first-order
+requirements. Scripts belonging only to transitive dependencies are excluded.
+Use `omit_executables` to hide selected scripts, or `executables_override` for
+an exact allowlist:
 
 ```yaml
 environments:
   - name: formatting
-    requirements: ruff==0.13.0
-    executables: [ruff] # Only ruff will be available in PATH via shims
+    requirements: |
+      ruff==0.13.0
+      black
+    omit_executables: [black]
+  - name: no-shims
+    requirements: pytest
+    executables_override: []
 ```
 
-- **Optional**: Only needed if you want to use `uv-toolbox shim`
-- **Explicit control**: List exactly which executables to expose
-- **Prevents PATH pollution**: Python/pip from the venv won't be added to PATH
+- **Automatic**: First-order package scripts are exposed without duplication
+- **Selective omission**: Remove individual automatically discovered scripts
+- **Exact override**: Use any list, including `[]` to expose nothing
+
+The legacy `executables` key emits a deprecation warning and will be removed in
+uv-toolbox 1.0. Use `executables_override` instead.
 
 ## Usage
 
@@ -108,9 +117,9 @@ Add shim scripts to your PATH for direct tool access:
 eval "$(uv-toolbox shim)"
 ```
 
-This creates wrapper scripts for executables listed in the `executables` field
-of each environment. Only explicitly listed executables are exposed, preventing
-Python/pip from polluting your PATH.
+This creates wrapper scripts for the console scripts declared by each
+environment's first-order requirements. Transitive package scripts and the
+venv's Python/pip executables are not exposed.
 
 If you use [mise](https://mise.jdx.dev), the mise plugin handles PATH management
 automatically on every shell activation — see the
