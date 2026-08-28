@@ -7,6 +7,7 @@ GITHUB_REPO_OWNER = "hotdog-werx"
 GITHUB_REPO_NAME = "{{ config_root | basename }}"
 GITHUB_REPO = "{{ env.GITHUB_REPO_OWNER }}/{{ env.GITHUB_REPO_NAME }}"
 GIT_CLIFF_CONFIG = "./cliff.toml"
+_.uv-toolbox = { tools = true }
 
 # uv-toolbox install provisions the "repolish" env (repolish + devkit
 # provider packages) before repolish link can use it. repolish link then
@@ -83,3 +84,6 @@ depends = [
   "workspace:repolish:check",
   "workspace:uv-toolbox-lock:check",
 ]
+
+[plugins]
+uv-toolbox = "https://github.com/hotdog-werx/uv-toolbox"

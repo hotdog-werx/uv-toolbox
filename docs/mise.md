@@ -11,7 +11,13 @@ Add the plugin to your project's `mise.toml`:
 ```toml
 [plugins]
 uv-toolbox = "https://github.com/hotdog-werx/uv-toolbox"
+
+[env]
+_.uv-toolbox = { tools = true }
 ```
+
+The `env._.uv-toolbox` directive activates the plugin. `tools = true` makes the
+mise-managed `uv-toolbox` executable available while the plugin hook runs.
 
 Then wire up installation so shims exist before mise tries to expose them:
 
@@ -37,11 +43,13 @@ pytest
 
 ## How it works
 
-The plugin consists of two Lua hooks in `mise-plugin/`:
+The plugin follows mise's environment-plugin layout at the repository root:
 
-- `mise_env.lua` — required by mise; returns no extra environment variables
-- `mise_path.lua` — returns the list of shim directories for mise to prepend to
-  `PATH`
+- `metadata.lua` — identifies the repository as a mise plugin
+- `hooks/mise_env.lua` — required by mise; returns no extra environment
+  variables
+- `hooks/mise_path.lua` — returns the list of shim directories for mise to
+  prepend to `PATH`
 
 Every time mise activates (new shell, `cd`), it calls `mise_path.lua`, which
 recreates shims and returns their directories. If no venvs have been installed
@@ -57,5 +65,5 @@ plugin config:
 uv-toolbox = "https://github.com/hotdog-werx/uv-toolbox"
 
 [env]
-_.uv-toolbox.config = "./path/to/uv-toolbox.yaml"
+_.uv-toolbox = { tools = true, config = "./path/to/uv-toolbox.yaml" }
 ```
