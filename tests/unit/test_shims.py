@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import Distribution
 from typing import TYPE_CHECKING
 
+import pytest
+
 from tests.utils import create_fake_distribution, create_fake_venv
+from uv_toolbox import shims
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
-from uv_toolbox.shims import create_shims
+from uv_toolbox.shims import (
+    _bare_vcs_key,
+    _distribution_direct_url,
+    _first_order_package_names,
+    _logical_requirement_lines,
+    _site_packages_paths,
+    create_shims,
+)
 from uv_toolbox.utils import _venv_bin_path
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from pytest_mock import MockerFixture
 
 
 def _make_settings(
@@ -33,6 +46,69 @@ def _make_settings(
             ],
         },
     )
+
+
+def test_site_packages_paths_uses_windows_layout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows environments discover packages under Lib/site-packages."""
+    site_packages = tmp_path / 'Lib' / 'site-packages'
+    site_packages.mkdir(parents=True)
+    monkeypatch.setattr(shims.os, 'name', 'nt')
+
+    assert _site_packages_paths(tmp_path) == [site_packages]
+
+
+def test_logical_requirement_lines_handles_comments_continuations_and_trailing_content() -> None:
+    """Requirement parsing joins continuations and ignores comments and blanks."""
+    content = '# comment\n\nroot-tool \\\n        >=1\ntrailing \\'
+
+    assert list(_logical_requirement_lines(content)) == [
+        'root-tool >=1',
+        'trailing ',
+    ]
+
+
+@pytest.mark.parametrize('prefix', ['-e ', '--editable '])
+def test_bare_vcs_key_accepts_editable_prefixes(prefix: str) -> None:
+    """Editable bare Git requirements normalize to their direct URL key."""
+    spec = f'{prefix}git+https://github.com/example/tools.git@v1#subdirectory=packages/tool'
+
+    assert _bare_vcs_key(spec) == (
+        'https://github.com/example/tools.git',
+        'packages/tool',
+    )
+
+
+def test_bare_vcs_key_rejects_invalid_non_vcs_requirement() -> None:
+    """Invalid requirements that are not Git URLs have no direct URL key."""
+    assert _bare_vcs_key('not a valid requirement ???') is None
+
+
+@pytest.mark.parametrize('content', ['{', '[]', '{"url": 42}'])
+def test_distribution_direct_url_rejects_malformed_metadata(
+    content: str,
+    mocker: MockerFixture,
+) -> None:
+    """Malformed or structurally invalid PEP 610 metadata is ignored."""
+    distribution = mocker.Mock(spec=Distribution)
+    distribution.read_text.return_value = content
+
+    assert _distribution_direct_url(distribution) is None
+
+
+def test_first_order_package_names_ignores_pip_options() -> None:
+    """Pip option lines do not become first-order package names."""
+    env = UvToolboxEnvironment(
+        name='env1',
+        requirements='--index-url https://example.com/simple\nroot-tool',
+    )
+
+    names, vcs_keys = _first_order_package_names(env)
+
+    assert names == {'root-tool'}
+    assert vcs_keys == set()
 
 
 def test_create_shims_creates_per_venv_shim_directories(tmp_path: Path) -> None:

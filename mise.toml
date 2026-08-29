@@ -9,18 +9,21 @@ GITHUB_REPO = "{{ env.GITHUB_REPO_OWNER }}/{{ env.GITHUB_REPO_NAME }}"
 GIT_CLIFF_CONFIG = "./cliff.toml"
 _.uv-toolbox = { tools = true }
 
-# Sync this checkout before invoking uv-toolbox so newly declared runtime
-# dependencies are installed even when mise restores its tool cache. Then
-# uv-toolbox install provisions the "repolish" env (repolish + devkit provider
-# packages) before repolish link materializes provider-resource symlinks
-# (.editorconfig, dprint.json).
+# uv-toolbox install provisions the "repolish" env (repolish + devkit
+# provider packages) before repolish link can use it. repolish link then
+# materializes provider-resource symlinks (.editorconfig, dprint.json) —
+# never committed to git (their symlink source is an absolute path,
+# portable only within the machine that created it), so every environment
+# links them fresh on every `mise install`.
 #
 # [[hooks.postinstall]] (array-of-tables, one entry per subprocess) is used
 # instead of a flat postinstall = ["...", "..."] array — newer mise releases
 # (2026.7.5 in CI, not 2026.5.15 locally) silently ran only the last entry
 # of the flat-array form.
+# Refresh the editable tool environment in case mise restored a cache created
+# before a new runtime dependency was declared. --no-hooks prevents recursion.
 [[hooks.postinstall]]
-run = "uv sync --all-groups --all-packages"
+run = "mise --no-hooks install --force pipx:uv-toolbox"
 
 [[hooks.postinstall]]
 run = "uv-toolbox install"
@@ -39,6 +42,7 @@ git-cliff = "2.12.0"
 actionlint = "1.7.10"
 shellcheck = "0.11.0"
 
+"pipx:uv-toolbox" = { version = "0.0.0.dev0", uvx_args = "--with-editable ." }
 "pipx:ruff" = "0.14.14"
 "pipx:releez" = "1.0.1"
 "pipx:zensical" = "0.0.19"
