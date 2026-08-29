@@ -58,7 +58,7 @@ def _write_toolbox_config(project_dir: Path) -> Path:
         environments:
           - name: plugin-test
             requirements: mise-plugin-fixture
-            executables: [mise-plugin-fixture]
+            executables_override: [mise-plugin-fixture]
         """).strip()
         + '\n',
     )

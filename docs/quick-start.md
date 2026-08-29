@@ -179,9 +179,8 @@ environments:
     executables_override: []
 ```
 
-The legacy `executables` key is accepted as an alias for
-`executables_override`, but emits a deprecation warning and will be removed in
-uv-toolbox 1.0.
+The legacy `executables` key is accepted as an alias for `executables_override`,
+but emits a deprecation warning and will be removed in uv-toolbox 1.0.
 
 ### Generate a repo lockfile
 
