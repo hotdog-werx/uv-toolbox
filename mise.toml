@@ -20,6 +20,11 @@ _.uv-toolbox = { tools = true }
 # instead of a flat postinstall = ["...", "..."] array — newer mise releases
 # (2026.7.5 in CI, not 2026.5.15 locally) silently ran only the last entry
 # of the flat-array form.
+# Refresh the editable tool environment in case mise restored a cache created
+# before a new runtime dependency was declared. --no-hooks prevents recursion.
+[[hooks.postinstall]]
+run = "mise --no-hooks install --force pipx:uv-toolbox"
+
 [[hooks.postinstall]]
 run = "uv-toolbox install"
 

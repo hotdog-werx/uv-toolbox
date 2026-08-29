@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -59,6 +60,42 @@ def test_environment_paths_from_settings(tmp_path: Path) -> None:
     venv_path = env.venv_path(settings=settings)
     assert venv_path.parent == tmp_path / '.uv-toolbox'
     assert len(venv_path.name) == 12
+
+
+def test_environment_executable_configuration_defaults_to_auto_discovery() -> None:
+    """Executable discovery defaults to automatic mode with no omissions."""
+    env = UvToolboxEnvironment(name='env1', requirements='ruff')
+
+    assert env.executables_override is None
+    assert env.omit_executables == []
+
+
+def test_environment_warns_for_legacy_executables_alias() -> None:
+    """The former executables key warns and remains an alias for the override."""
+    with pytest.warns(
+        FutureWarning,
+        match=r"'executables'.*deprecated.*removed in uv-toolbox 1\.0",
+    ):
+        env = UvToolboxEnvironment.model_validate(
+            {'name': 'env1', 'requirements': 'ruff', 'executables': ['ruff']},
+        )
+
+    assert env.executables_override == ['ruff']
+
+
+def test_environment_executables_override_does_not_warn() -> None:
+    """The replacement executable override key does not emit a warning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        env = UvToolboxEnvironment.model_validate(
+            {
+                'name': 'env1',
+                'requirements': 'ruff',
+                'executables_override': ['ruff'],
+            },
+        )
+
+    assert env.executables_override == ['ruff']
 
 
 def test_environment_process_env_expands_vars(

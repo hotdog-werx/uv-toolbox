@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import Distribution
 from typing import TYPE_CHECKING
 
-from tests.utils import create_fake_venv
+import pytest
+
+from tests.utils import create_fake_distribution, create_fake_venv
+from uv_toolbox import shims
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
-from uv_toolbox.shims import create_shims
+from uv_toolbox.shims import (
+    _bare_vcs_key,
+    _distribution_direct_url,
+    _first_order_package_names,
+    _logical_requirement_lines,
+    _site_packages_paths,
+    create_shims,
+)
 from uv_toolbox.utils import _venv_bin_path
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from pytest_mock import MockerFixture
 
 
 def _make_settings(
@@ -26,7 +39,8 @@ def _make_settings(
                     'requirements': env.requirements,
                     'requirements_file': env.requirements_file,
                     'environment': env.environment,
-                    'executables': env.executables,
+                    'executables_override': env.executables_override,
+                    'omit_executables': env.omit_executables,
                 }
                 for env in envs
             ],
@@ -34,12 +48,75 @@ def _make_settings(
     )
 
 
+def test_site_packages_paths_uses_windows_layout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows environments discover packages under Lib/site-packages."""
+    site_packages = tmp_path / 'Lib' / 'site-packages'
+    site_packages.mkdir(parents=True)
+    monkeypatch.setattr(shims.os, 'name', 'nt')
+
+    assert _site_packages_paths(tmp_path) == [site_packages]
+
+
+def test_logical_requirement_lines_handles_comments_continuations_and_trailing_content() -> None:
+    """Requirement parsing joins continuations and ignores comments and blanks."""
+    content = '# comment\n\nroot-tool \\\n        >=1\ntrailing \\'
+
+    assert list(_logical_requirement_lines(content)) == [
+        'root-tool >=1',
+        'trailing ',
+    ]
+
+
+@pytest.mark.parametrize('prefix', ['-e ', '--editable '])
+def test_bare_vcs_key_accepts_editable_prefixes(prefix: str) -> None:
+    """Editable bare Git requirements normalize to their direct URL key."""
+    spec = f'{prefix}git+https://github.com/example/tools.git@v1#subdirectory=packages/tool'
+
+    assert _bare_vcs_key(spec) == (
+        'https://github.com/example/tools.git',
+        'packages/tool',
+    )
+
+
+def test_bare_vcs_key_rejects_invalid_non_vcs_requirement() -> None:
+    """Invalid requirements that are not Git URLs have no direct URL key."""
+    assert _bare_vcs_key('not a valid requirement ???') is None
+
+
+@pytest.mark.parametrize('content', ['{', '[]', '{"url": 42}'])
+def test_distribution_direct_url_rejects_malformed_metadata(
+    content: str,
+    mocker: MockerFixture,
+) -> None:
+    """Malformed or structurally invalid PEP 610 metadata is ignored."""
+    distribution = mocker.Mock(spec=Distribution)
+    distribution.read_text.return_value = content
+
+    assert _distribution_direct_url(distribution) is None
+
+
+def test_first_order_package_names_ignores_pip_options() -> None:
+    """Pip option lines do not become first-order package names."""
+    env = UvToolboxEnvironment(
+        name='env1',
+        requirements='--index-url https://example.com/simple\nroot-tool',
+    )
+
+    names, vcs_keys = _first_order_package_names(env)
+
+    assert names == {'root-tool'}
+    assert vcs_keys == set()
+
+
 def test_create_shims_creates_per_venv_shim_directories(tmp_path: Path) -> None:
     """Creates a `shims/` directory inside each venv that has listed executables."""
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff'],
+        executables_override=['ruff'],
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
@@ -53,14 +130,76 @@ def test_create_shims_creates_per_venv_shim_directories(tmp_path: Path) -> None:
     assert shim_dirs[0].is_dir()
 
 
+def test_create_shims_discovers_scripts_from_first_order_packages(tmp_path: Path) -> None:
+    """Automatic mode exposes first-order package scripts but not transitive package scripts."""
+    env = UvToolboxEnvironment(name='env1', requirements='root-tool>=1')
+    settings = _make_settings(tmp_path, envs=[env])
+    venv_path = env.venv_path(settings=settings)
+    create_fake_venv(venv_path, ['root', 'transitive'])
+    create_fake_distribution(venv_path, 'root-tool', ['root'])
+    create_fake_distribution(venv_path, 'transitive-tool', ['transitive'])
+
+    shim_dirs = create_shims(settings=settings)
+
+    assert len(shim_dirs) == 1
+    suffix = '.bat' if os.name == 'nt' else ''
+    assert (shim_dirs[0] / f'root{suffix}').exists()
+    assert not (shim_dirs[0] / f'transitive{suffix}').exists()
+
+
+def test_create_shims_matches_bare_vcs_requirements_to_direct_url_metadata(
+    tmp_path: Path,
+) -> None:
+    """Bare VCS requirements are matched using installed PEP 610 metadata."""
+    requirement = 'git+https://github.com/example/tools.git@v1#subdirectory=packages/workspace'
+    env = UvToolboxEnvironment(name='env1', requirements=requirement)
+    settings = _make_settings(tmp_path, envs=[env])
+    venv_path = env.venv_path(settings=settings)
+    create_fake_venv(venv_path, ['workspace-link'])
+    create_fake_distribution(
+        venv_path,
+        'example-workspace',
+        ['workspace-link'],
+        direct_url={
+            'url': 'https://github.com/example/tools.git',
+            'subdirectory': 'packages/workspace',
+            'vcs_info': {'vcs': 'git', 'commit_id': 'abc123'},
+        },
+    )
+
+    shim_dirs = create_shims(settings=settings)
+
+    suffix = '.bat' if os.name == 'nt' else ''
+    assert (shim_dirs[0] / f'workspace-link{suffix}').exists()
+
+
+def test_create_shims_omits_selected_auto_discovered_executables(tmp_path: Path) -> None:
+    """omit_executables subtracts selected scripts from automatic discovery."""
+    env = UvToolboxEnvironment(
+        name='env1',
+        requirements='root-tool',
+        omit_executables=['root-admin'],
+    )
+    settings = _make_settings(tmp_path, envs=[env])
+    venv_path = env.venv_path(settings=settings)
+    create_fake_venv(venv_path, ['root', 'root-admin'])
+    create_fake_distribution(venv_path, 'root-tool', ['root', 'root-admin'])
+
+    shim_dirs = create_shims(settings=settings)
+
+    suffix = '.bat' if os.name == 'nt' else ''
+    assert (shim_dirs[0] / f'root{suffix}').exists()
+    assert not (shim_dirs[0] / f'root-admin{suffix}').exists()
+
+
 def test_create_shims_creates_shims_for_listed_executables(
     tmp_path: Path,
 ) -> None:
-    """Only executables in the `executables` field get shims; unlisted executables in the venv are ignored."""
+    """Only executables in the `executables_override` field get shims; unlisted executables in the venv are ignored."""
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff', 'black'],
+        executables_override=['ruff', 'black'],
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
@@ -88,12 +227,12 @@ def test_create_shims_returns_multiple_shim_dirs_in_config_order(
     env1 = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff'],
+        executables_override=['ruff'],
     )
     env2 = UvToolboxEnvironment(
         name='env2',
         requirements='black',
-        executables=['black'],
+        executables_override=['black'],
     )
     settings = _make_settings(tmp_path, envs=[env1, env2])
 
@@ -114,12 +253,12 @@ def test_create_shims_allows_duplicate_executables_across_envs(
     env1 = UvToolboxEnvironment(
         name='env1',
         requirements='ruff==0.1.0',
-        executables=['ruff'],
+        executables_override=['ruff'],
     )
     env2 = UvToolboxEnvironment(
         name='env2',
         requirements='ruff==0.2.0',
-        executables=['ruff'],
+        executables_override=['ruff'],
     )
     settings = _make_settings(tmp_path, envs=[env1, env2])
 
@@ -138,11 +277,11 @@ def test_create_shims_allows_duplicate_executables_across_envs(
 
 
 def test_create_shims_clears_old_shims(tmp_path: Path) -> None:
-    """Re-running create_shims replaces the shim directory contents to match the current executables list."""
+    """Re-running create_shims replaces the shim directory contents to match the current executable override."""
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff', 'black'],
+        executables_override=['ruff', 'black'],
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
@@ -151,7 +290,7 @@ def test_create_shims_clears_old_shims(tmp_path: Path) -> None:
     shim_dirs = create_shims(settings=settings)
     shim_dir = shim_dirs[0]
 
-    env.executables = ['ruff', 'mypy']
+    env.executables_override = ['ruff', 'mypy']
     settings = _make_settings(tmp_path, envs=[env])
 
     create_shims(settings=settings)
@@ -171,7 +310,7 @@ def test_create_shims_skips_nonexistent_venvs(tmp_path: Path) -> None:
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff'],
+        executables_override=['ruff'],
     )
     settings = _make_settings(tmp_path, envs=[env])
 
@@ -181,8 +320,8 @@ def test_create_shims_skips_nonexistent_venvs(tmp_path: Path) -> None:
 
 
 def test_create_shims_skips_envs_with_empty_executables(tmp_path: Path) -> None:
-    """Returns an empty list for envs with no executables listed, even when the venv exists."""
-    env = UvToolboxEnvironment(name='env1', requirements='ruff', executables=[])
+    """An empty executable override exposes nothing, even when the venv has tools."""
+    env = UvToolboxEnvironment(name='env1', requirements='ruff', executables_override=[])
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
     create_fake_venv(venv_path, ['ruff', 'black'])
@@ -192,12 +331,29 @@ def test_create_shims_skips_envs_with_empty_executables(tmp_path: Path) -> None:
     assert len(shim_dirs) == 0
 
 
+def test_empty_override_clears_existing_auto_discovered_shims(tmp_path: Path) -> None:
+    """Switching to an empty override removes shims created by automatic mode."""
+    env = UvToolboxEnvironment(name='env1', requirements='root-tool')
+    settings = _make_settings(tmp_path, envs=[env])
+    venv_path = env.venv_path(settings=settings)
+    create_fake_venv(venv_path, ['root'])
+    create_fake_distribution(venv_path, 'root-tool', ['root'])
+    shim_dir = create_shims(settings=settings)[0]
+
+    env.executables_override = []
+    settings = _make_settings(tmp_path, envs=[env])
+    shim_dirs = create_shims(settings=settings)
+
+    assert shim_dirs == []
+    assert list(shim_dir.iterdir()) == []
+
+
 def test_create_shims_skips_missing_executables(tmp_path: Path) -> None:
-    """Silently skips executables listed in config that are not present in the venv's bin directory."""
+    """Silently skip overridden executable names absent from the venv bin directory."""
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff', 'black', 'nonexistent'],
+        executables_override=['ruff', 'black', 'nonexistent'],
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
@@ -224,7 +380,7 @@ def test_unix_shim_contains_correct_paths(tmp_path: Path) -> None:
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff'],
+        executables_override=['ruff'],
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
@@ -247,7 +403,7 @@ def test_windows_shim_contains_correct_paths(tmp_path: Path) -> None:
     env = UvToolboxEnvironment(
         name='env1',
         requirements='ruff',
-        executables=['ruff'],
+        executables_override=['ruff'],
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)

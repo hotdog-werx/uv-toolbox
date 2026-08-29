@@ -75,7 +75,7 @@ def test_integration_exec_installs_project_dependencies(
             requirements: |
               ruff
               myproject @ .
-            executables: [ruff]
+            executables_override: [ruff]
     """).strip()
         + '\n',
     )
