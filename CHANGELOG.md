@@ -1,3 +1,22 @@
+## [0.3.0] - 2026-08-29
+
+### 🚀 Features
+
+- Automatic executable detection (#14) by
+  [@jamestrousdale](https://github.com/jamestrousdale) in
+  [#14](https://github.com/hotdog-werx/uv-toolbox/pull/14)
+
+### 🐛 Bug Fixes
+
+- Attempted fix of mise plugin by
+  [@jamestrousdale](https://github.com/jamestrousdale)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add mise plugin tests (#15) by
+  [@jamestrousdale](https://github.com/jamestrousdale) in
+  [#15](https://github.com/hotdog-werx/uv-toolbox/pull/15)
+
 ## [0.2.0] - 2026-08-09
 
 ### 🚀 Features
