@@ -23,6 +23,17 @@ def _print_command(args: Sequence[str]) -> None:
     typer.secho(f'▶ {cmd}', fg=typer.colors.BRIGHT_BLACK, err=True)
 
 
+def _process_env(extra_env: Mapping[str, str | None] | None) -> dict[str, str]:
+    """Merge overrides into the current environment, removing None values."""
+    environment = dict(os.environ)
+    for key, value in (extra_env or {}).items():
+        if value is None:
+            environment.pop(key, None)
+        else:
+            environment[key] = value
+    return environment
+
+
 def run_checked(  # noqa: PLR0913
     args: Sequence[str],
     *,
@@ -53,13 +64,6 @@ def run_checked(  # noqa: PLR0913
     if show_command:
         _print_command(args)
 
-    process_env = dict(os.environ)
-    for key, value in (extra_env or {}).items():
-        if value is None:
-            process_env.pop(key, None)
-        else:
-            process_env[key] = value
-
     try:
         stdout = subprocess.PIPE if capture_stdout else None
         stderr = subprocess.PIPE if capture_stderr else None
@@ -70,7 +74,7 @@ def run_checked(  # noqa: PLR0913
             text=True,
             stdout=stdout,
             stderr=stderr,
-            env=process_env,
+            env=_process_env(extra_env),
         )
     except FileNotFoundError as exc:
         raise MissingCliError(args[0]) from exc
