@@ -209,10 +209,14 @@ class UvToolboxEnvironment(BaseModel):
         req_hash = self._get_requirements_hash()
         return settings.resolved_venv_path / req_hash
 
+    def configured_env(self) -> dict[str, str]:
+        """Return the expanded environment variables declared by the user."""
+        return {key: expandvars(value) for key, value in self.environment.items()}
+
     def process_env(self, settings: UvToolboxSettings) -> dict[str, str]:
-        """Environment variables for processes run in this environment."""
+        """Return configured variables plus the materialized venv location."""
         return {
-            **{k: expandvars(v) for k, v in self.environment.items()},
+            **self.configured_env(),
             'VIRTUAL_ENV': str(self.venv_path(settings=settings)),
         }
 

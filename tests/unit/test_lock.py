@@ -29,6 +29,7 @@ def _make_settings(
                     'name': e.name,
                     'requirements': e.requirements,
                     'requirements_file': e.requirements_file,
+                    'environment': e.environment,
                 }
                 for e in envs
             ],
@@ -72,6 +73,7 @@ def test_generate_environment_lock_with_requirements_file(
         ],
         capture_stdout=True,
         capture_stderr=False,
+        extra_env={**env.configured_env(), 'VIRTUAL_ENV': None},
         show_command=False,
     )
     assert result == _COMPILED
@@ -114,6 +116,7 @@ def test_generate_environment_lock_with_inline_requirements(
         ],
         capture_stdout=True,
         capture_stderr=False,
+        extra_env={**env.configured_env(), 'VIRTUAL_ENV': None},
         show_command=False,
     )
     assert result == _COMPILED
@@ -166,12 +169,16 @@ def test_generate_environment_lock_preserves_dash_file(
     assert dash_file.read_text() == 'keep me'
 
 
-def test_generate_environment_lock_does_not_pass_virtual_env(
+def test_generate_environment_lock_passes_configured_env_without_virtual_env(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    """Compiling a lockfile does not set extra_env, since `uv pip compile` should not target a specific venv."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
+    """Locking receives configured variables without targeting a materialized venv."""
+    env = UvToolboxEnvironment(
+        name='fmt',
+        requirements='ruff\n',
+        environment={'UV_INDEX_URL': 'https://example.com/simple'},
+    )
     settings = _make_settings(tmp_path, envs=[env])
     temp_dir = tmp_path / 'compile'
     temp_dir.mkdir()
@@ -184,8 +191,11 @@ def test_generate_environment_lock_does_not_pass_virtual_env(
 
     generate_environment_lock(env=env, settings=settings)
 
-    call_kwargs = run_mock.call_args.kwargs
-    assert 'extra_env' not in call_kwargs
+    extra_env = run_mock.call_args.kwargs['extra_env']
+    assert extra_env == {
+        'UV_INDEX_URL': 'https://example.com/simple',
+        'VIRTUAL_ENV': None,
+    }
 
 
 def test_generate_environment_lock_seeds_existing_pins_for_validation(

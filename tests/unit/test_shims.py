@@ -11,6 +11,8 @@ from uv_toolbox import shims
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 from uv_toolbox.shims import (
     _bare_vcs_key,
+    _create_shim_for_executable,
+    _create_windows_shim,
     _distribution_direct_url,
     _first_order_package_names,
     _logical_requirement_lines,
@@ -381,6 +383,7 @@ def test_unix_shim_contains_correct_paths(tmp_path: Path) -> None:
         name='env1',
         requirements='ruff',
         executables_override=['ruff'],
+        environment={'UV_INDEX_URL': 'https://example.com/simple index'},
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
@@ -389,7 +392,9 @@ def test_unix_shim_contains_correct_paths(tmp_path: Path) -> None:
     shim_dirs = create_shims(settings=settings)
     shim_content = (shim_dirs[0] / 'ruff').read_text()
 
-    assert f'VIRTUAL_ENV="{venv_path}"' in shim_content
+    assert 'export UV_INDEX_URL=' in shim_content
+    assert "'https://example.com/simple index'" in shim_content
+    assert f'export VIRTUAL_ENV={venv_path}' in shim_content
     assert f'uv run --no-project --python "{venv_path}/bin/python"' in shim_content
     assert f'"{_venv_bin_path(venv_path)}/ruff"' in shim_content
     assert shim_content.startswith('#!/usr/bin/env bash')
@@ -404,6 +409,7 @@ def test_windows_shim_contains_correct_paths(tmp_path: Path) -> None:
         name='env1',
         requirements='ruff',
         executables_override=['ruff'],
+        environment={'UV_INDEX_URL': 'https://example.com/100%25'},
     )
     settings = _make_settings(tmp_path, envs=[env])
     venv_path = env.venv_path(settings=settings)
@@ -415,7 +421,50 @@ def test_windows_shim_contains_correct_paths(tmp_path: Path) -> None:
     shim_dirs = create_shims(settings=settings)
     shim_content = (shim_dirs[0] / 'ruff.bat').read_text()
 
-    assert f'set VIRTUAL_ENV={venv_path}' in shim_content
+    assert 'set "UV_INDEX_URL=https://example.com/100%%25"' in shim_content
+    assert f'set "VIRTUAL_ENV={venv_path}"' in shim_content
     assert 'uv run --no-project --python' in shim_content
     assert f'"{bin_path / "ruff.exe"}"' in shim_content or f'"{bin_path}\\ruff.exe"' in shim_content
     assert shim_content.startswith('@echo off')
+
+
+def test_windows_shim_serializes_configured_environment(tmp_path: Path) -> None:
+    """Windows shim values use quoted set syntax and escape percent expansion."""
+    shim_path = tmp_path / 'ruff'
+    venv_path = tmp_path / '.venv'
+    target_path = venv_path / 'Scripts' / 'ruff.exe'
+
+    _create_windows_shim(
+        shim_path,
+        target_path,
+        venv_path,
+        {'UV_INDEX_URL': 'https://example.com/100%25'},
+    )
+
+    shim_content = shim_path.with_suffix('.bat').read_text()
+    assert 'set "UV_INDEX_URL=https://example.com/100%%25"' in shim_content
+    assert f'set "VIRTUAL_ENV={venv_path}"' in shim_content
+
+
+def test_create_shim_for_executable_forwards_environment_on_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Platform dispatch forwards configured variables to Windows shims."""
+    venv_path = tmp_path / '.venv'
+    bin_path = venv_path / 'Scripts'
+    shim_dir = venv_path / 'shims'
+    bin_path.mkdir(parents=True)
+    shim_dir.mkdir()
+    (bin_path / 'ruff.exe').write_text('fake')
+    monkeypatch.setattr(shims.os, 'name', 'nt')
+
+    _create_shim_for_executable(
+        'ruff',
+        venv_path,
+        bin_path,
+        shim_dir,
+        {'FROM_CONFIG': 'yes'},
+    )
+
+    assert 'set "FROM_CONFIG=yes"' in (shim_dir / 'ruff.bat').read_text()

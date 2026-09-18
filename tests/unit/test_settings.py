@@ -98,11 +98,11 @@ def test_environment_executables_override_does_not_warn() -> None:
     assert env.executables_override == ['ruff']
 
 
-def test_environment_process_env_expands_vars(
+def test_environment_configured_env_expands_vars(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Process env expands shell variable references in the `environment` dict and always includes VIRTUAL_ENV."""
+    """Configured env expands shell variable references without adding VIRTUAL_ENV."""
     monkeypatch.setenv('TEST_ROOT', str(tmp_path))
     settings = _make_settings(
         venv_path=tmp_path / '.uv-toolbox',
@@ -116,9 +116,29 @@ def test_environment_process_env_expands_vars(
     )
     env = settings.environments[0]
 
+    configured_env = env.configured_env()
+
+    assert Path(configured_env['TOOLS']) == tmp_path / 'tools'
+    assert 'VIRTUAL_ENV' not in configured_env
+
+
+def test_environment_process_env_includes_configured_env_and_virtual_env(tmp_path: Path) -> None:
+    """Process env combines configured variables with the materialized venv path."""
+    settings = _make_settings(
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[
+            {
+                'name': 'env1',
+                'requirements': 'ruff',
+                'environment': {'TOOLS': 'tools'},
+            },
+        ],
+    )
+    env = settings.environments[0]
+
     process_env = env.process_env(settings=settings)
 
-    assert Path(process_env['TOOLS']) == tmp_path / 'tools'
+    assert process_env['TOOLS'] == 'tools'
     virtual_env = Path(process_env['VIRTUAL_ENV'])
     assert virtual_env.parent == tmp_path / '.uv-toolbox'
     assert len(virtual_env.name) == 12

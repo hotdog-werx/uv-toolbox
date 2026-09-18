@@ -54,6 +54,28 @@ def test_run_checked_skips_stderr_when_disabled(mocker: MockerFixture) -> None:
     assert run_mock.call_args.kwargs['stderr'] is None
 
 
+def test_run_checked_sets_and_removes_environment_variables(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Extra environment values override the parent and None removes inherited values."""
+    monkeypatch.setenv('REMOVE_ME', 'inherited')
+    completed = SimpleNamespace(stdout='ok\n')
+    run_mock = mocker.patch(
+        'uv_toolbox.process.subprocess.run',
+        return_value=completed,
+    )
+
+    run_checked(
+        ['echo', 'ok'],
+        extra_env={'ADDED': 'configured', 'REMOVE_ME': None},
+    )
+
+    process_env = run_mock.call_args.kwargs['env']
+    assert process_env['ADDED'] == 'configured'
+    assert 'REMOVE_ME' not in process_env
+
+
 def test_run_checked_raises_missing_cli(mocker: MockerFixture) -> None:
     """Raises MissingCliError when the executable is not found (FileNotFoundError from subprocess)."""
     mocker.patch(

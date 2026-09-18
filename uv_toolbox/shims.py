@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import stat
 import typing
 from importlib.metadata import Distribution, distributions
@@ -139,6 +140,7 @@ def _create_unix_shim(
     shim_path: Path,
     target_path: Path,
     venv_path: Path,
+    environment: dict[str, str],
 ) -> None:
     """Create a Unix shell script shim.
 
@@ -146,10 +148,12 @@ def _create_unix_shim(
         shim_path: Path where the shim script should be created.
         target_path: Path to the actual executable.
         venv_path: Path to the virtual environment.
+        environment: Configured environment variables to export.
     """
     python_exe = venv_path / 'bin' / 'python'
+    environment_lines = ''.join(f'export {key}={shlex.quote(value)}\n' for key, value in environment.items())
     script = f"""#!/usr/bin/env bash
-VIRTUAL_ENV="{venv_path}"
+{environment_lines}export VIRTUAL_ENV={shlex.quote(str(venv_path))}
 exec uv run --no-project --python "{python_exe}" -- "{target_path}" "$@"
 """
     shim_path.write_text(script)
@@ -163,6 +167,7 @@ def _create_windows_shim(
     shim_path: Path,
     target_path: Path,
     venv_path: Path,
+    environment: dict[str, str],
 ) -> None:
     """Create a Windows batch script shim.
 
@@ -170,12 +175,14 @@ def _create_windows_shim(
         shim_path: Path where the shim script should be created (without extension).
         target_path: Path to the actual executable.
         venv_path: Path to the virtual environment.
+        environment: Configured environment variables to set.
     """
     # Create .bat file
     bat_path = shim_path.with_suffix('.bat')
     python_exe = venv_path / 'Scripts' / 'python.exe'
+    environment_lines = ''.join(f'set "{key}={value.replace("%", "%%")}"\n' for key, value in environment.items())
     script = f"""@echo off
-set VIRTUAL_ENV={venv_path}
+{environment_lines}set "VIRTUAL_ENV={venv_path}"
 uv run --no-project --python "{python_exe}" -- "{target_path}" %*
 """
     bat_path.write_text(script)
@@ -234,6 +241,7 @@ def _create_shim_for_executable(
     venv_path: Path,
     bin_path: Path,
     shim_dir: Path,
+    environment: dict[str, str],
 ) -> None:
     """Create a shim for a single executable.
 
@@ -242,6 +250,7 @@ def _create_shim_for_executable(
         venv_path: Path to the virtual environment.
         bin_path: Path to the venv bin directory.
         shim_dir: Directory where the shim should be created.
+        environment: Configured environment variables for the executable.
     """
     # Find the executable in the venv
     target_path = _find_executable(bin_path, exe_name)
@@ -254,9 +263,9 @@ def _create_shim_for_executable(
 
     # Create platform-specific shim
     if os.name == 'nt':
-        _create_windows_shim(shim_path, target_path, venv_path)
+        _create_windows_shim(shim_path, target_path, venv_path, environment)
     else:
-        _create_unix_shim(shim_path, target_path, venv_path)
+        _create_unix_shim(shim_path, target_path, venv_path, environment)
 
 
 def _create_shims_for_environment(
@@ -292,7 +301,13 @@ def _create_shims_for_environment(
     # Create shims for this environment's executables
     bin_path = _venv_bin_path(venv_path)
     for exe_name in executable_names:
-        _create_shim_for_executable(exe_name, venv_path, bin_path, shim_dir)
+        _create_shim_for_executable(
+            exe_name,
+            venv_path,
+            bin_path,
+            shim_dir,
+            env.configured_env(),
+        )
 
     return shim_dir if executable_names else None
 

@@ -9,7 +9,7 @@ import typer
 from uv_toolbox.errors import ExternalCommandError, MissingCliError
 
 if typing.TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
 
@@ -23,13 +23,24 @@ def _print_command(args: Sequence[str]) -> None:
     typer.secho(f'▶ {cmd}', fg=typer.colors.BRIGHT_BLACK, err=True)
 
 
+def _process_env(extra_env: Mapping[str, str | None] | None) -> dict[str, str]:
+    """Merge overrides into the current environment, removing None values."""
+    environment = dict(os.environ)
+    for key, value in (extra_env or {}).items():
+        if value is None:
+            environment.pop(key, None)
+        else:
+            environment[key] = value
+    return environment
+
+
 def run_checked(  # noqa: PLR0913
     args: Sequence[str],
     *,
     cwd: Path | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
-    extra_env: dict[str, str] | None = None,
+    extra_env: Mapping[str, str | None] | None = None,
     show_command: bool = False,
 ) -> str:
     """Run a command and raise a UvToolboxError on failure.
@@ -39,7 +50,8 @@ def run_checked(  # noqa: PLR0913
         cwd: Optional working directory for the command.
         capture_stdout: If false, stdout is not captured.
         capture_stderr: If false, stderr is not captured.
-        extra_env: Additional environment variables to set for the command.
+        extra_env: Environment variables to set for the command. A value of
+            None removes an inherited variable.
         show_command: If true, print the command before executing.
 
     Returns:
@@ -62,10 +74,7 @@ def run_checked(  # noqa: PLR0913
             text=True,
             stdout=stdout,
             stderr=stderr,
-            env={
-                **os.environ,
-                **(extra_env or {}),
-            },
+            env=_process_env(extra_env),
         )
     except FileNotFoundError as exc:
         raise MissingCliError(args[0]) from exc
