@@ -79,6 +79,7 @@ def generate_environment_lock(
             ],
             capture_stdout=True,
             capture_stderr=False,
+            extra_env={**env.configured_env(), 'VIRTUAL_ENV': None},
             show_command=settings.show_commands,
         )
         return output_path.read_text().strip()
