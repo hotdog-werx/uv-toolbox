@@ -1,3 +1,16 @@
+## [0.3.1] - 2026-09-18
+
+### 🐛 Bug Fixes
+
+- Inject environment to lock (#17) by
+  [@jamestrousdale](https://github.com/jamestrousdale) in
+  [#17](https://github.com/hotdog-werx/uv-toolbox/pull/17)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add social preview asset by
+  [@jamestrousdale](https://github.com/jamestrousdale)
+
 ## [0.3.0] - 2026-08-29
 
 ### 🚀 Features
