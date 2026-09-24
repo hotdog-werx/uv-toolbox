@@ -1,3 +1,11 @@
+## [0.3.2] - 2026-09-24
+
+### 🐛 Bug Fixes
+
+- Record env fingerprint in lockfile (#19) by
+  [@jamestrousdale](https://github.com/jamestrousdale) in
+  [#19](https://github.com/hotdog-werx/uv-toolbox/pull/19)
+
 ## [0.3.1] - 2026-09-18
 
 ### 🐛 Bug Fixes
