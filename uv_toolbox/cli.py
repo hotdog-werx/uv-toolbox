@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
-from uv_toolbox.lock import generate_lock
+from uv_toolbox.lock import generate_lock, stale_environments, update_lock
 from uv_toolbox.lockfile import lockfiles_equal, read_lockfile, write_lockfile
 from uv_toolbox.process import run_checked
 from uv_toolbox.settings import UvToolboxSettings
@@ -50,6 +50,15 @@ def _check_lockfile(
 ) -> None:
     """Validate that committed pins still satisfy the configured requirements."""
     existing_lock = read_lockfile(lockfile_path)
+    stale = stale_environments(settings, existing_lock)
+    if stale:
+        typer.secho(
+            f'Lockfile is out of date: {lockfile_path}. Configuration changed for: '
+            f'{", ".join(stale)}. Run `uv-toolbox lock`.',
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
     lock_data = generate_lock(
         settings=settings,
         existing_lock=existing_lock,
@@ -77,6 +86,33 @@ def _write_lockfile(
     lock_data = generate_lock(settings=settings, refresh=refresh, upgrade=upgrade)
     write_lockfile(lock_data, lockfile_path)
     typer.echo(f'Wrote {lockfile_path}')
+
+
+def _relock_if_stale(settings: UvToolboxSettings) -> None:
+    """Re-lock environments whose config changed since the repo lockfile was written.
+
+    Does nothing when there is no repo lockfile. Otherwise re-resolves stale
+    environments, drops entries for removed ones, rewrites the lockfile, and
+    points the settings at the fresh pins.
+    """
+    lockfile_path = settings.lockfile_path
+    if lockfile_path is None or not lockfile_path.exists():
+        return
+    existing_lock = read_lockfile(lockfile_path)
+    stale = stale_environments(settings, existing_lock)
+    configured = {env.name for env in settings.environments}
+    if not stale and existing_lock.environments.keys() == configured:
+        return
+    if stale:
+        typer.secho(
+            f'Lockfile is out of date; re-locking: {", ".join(stale)}',
+            err=True,
+            fg=typer.colors.YELLOW,
+        )
+    lock_data = update_lock(settings, existing_lock, stale)
+    write_lockfile(lock_data, lockfile_path)
+    typer.secho(f'Updated {lockfile_path}', err=True)
+    settings.apply_lock(lock_data)
 
 
 @app.callback()
@@ -129,6 +165,11 @@ def install(
 ) -> None:
     """Install UV tool environments."""
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
+    try:
+        _relock_if_stale(settings)
+    except UvToolboxError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
     for env in settings.environments:
         try:
             initialize_virtualenv(
@@ -232,6 +273,7 @@ def exec_(
         raise CommandDelimiterRequiredError
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     try:
+        _relock_if_stale(settings)
         env = settings.select_environment(
             env_name=env_name,
         )

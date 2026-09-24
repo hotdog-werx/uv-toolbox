@@ -141,3 +141,44 @@ def test_lockfiles_equal_rejects_different_structure() -> None:
         UvToolboxLock(version=2, environments=lock.environments),
     )
     assert not lockfiles_equal(lock, UvToolboxLock())
+
+
+def test_fingerprint_round_trips_before_requirements(tmp_path: Path) -> None:
+    """The fingerprint is written above the requirements block and read back unchanged."""
+    lock = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements=_COMPILED, fingerprint='sha256:abc')},
+    )
+    path = tmp_path / 'uv-toolbox.lock'
+    write_lockfile(lock, path)
+    raw = path.read_text()
+
+    assert raw.index('fingerprint: sha256:abc') < raw.index('requirements: |')
+    assert read_lockfile(path).environments['fmt'].fingerprint == 'sha256:abc'
+
+
+def test_read_lockfile_without_fingerprint(tmp_path: Path) -> None:
+    """Lockfiles written before fingerprints existed load with a None fingerprint and write back without one."""
+    path = tmp_path / 'uv-toolbox.lock'
+    path.write_text('version: 1\nenvironments:\n  fmt:\n    requirements: |\n      ruff==1\n')
+
+    loaded = read_lockfile(path)
+
+    assert loaded.environments['fmt'].fingerprint is None
+    write_lockfile(loaded, path)
+    assert 'fingerprint' not in path.read_text()
+
+
+def test_lockfiles_equal_compares_fingerprints() -> None:
+    """Identical requirements with different or missing fingerprints are not equivalent."""
+    left = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements='ruff==1', fingerprint='sha256:a')},
+    )
+    other = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements='ruff==1', fingerprint='sha256:b')},
+    )
+    missing = UvToolboxLock(
+        environments={'fmt': EnvironmentLock(requirements='ruff==1')},
+    )
+
+    assert not lockfiles_equal(left, other)
+    assert not lockfiles_equal(left, missing)
