@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tomllib
 import typing
@@ -35,7 +36,7 @@ from uv_toolbox.errors import (
     MissingConfigFileError,
     MultipleEnvironmentsError,
 )
-from uv_toolbox.lockfile import read_lockfile
+from uv_toolbox.lockfile import UvToolboxLock, read_lockfile
 from uv_toolbox.utils import _filter_nulls
 
 if typing.TYPE_CHECKING:
@@ -67,6 +68,10 @@ _ALIASES = AliasGenerator(
 # Including this in the CAS hash prevents older, structurally incomplete
 # machine locks from being reused forever after an upgrade.
 _CACHE_FORMAT_VERSION = 2
+
+# Bump when the inputs covered by UvToolboxEnvironment.lock_fingerprint
+# change, so existing repo lockfiles are re-locked automatically.
+_LOCK_FINGERPRINT_VERSION = 1
 
 
 class UvToolboxEnvironment(BaseModel):
@@ -167,21 +172,42 @@ class UvToolboxEnvironment(BaseModel):
             cache_input = f'v{_CACHE_FORMAT_VERSION}\n{normalized}'
             return hashlib.sha256(cache_input.encode()).hexdigest()[:12]
 
-        if self.requirements:
-            normalized = self._normalize_requirements(self.requirements)
-        else:
-            # Read and normalize requirements file
-            if self.requirements_file is None:  # pragma: no cover
-                # Impossible: check_requirements validator ensures one is set
-                msg = 'Either requirements or requirements_file must be set'
-                raise ValueError(msg)  # pragma: no cover
-            normalized = self._normalize_requirements(
-                self.requirements_file.read_text(),
-            )
-
         # Use SHA-256 for hashing (truncated to 12 chars for readability)
-        cache_input = f'v{_CACHE_FORMAT_VERSION}\n{normalized}'
+        cache_input = f'v{_CACHE_FORMAT_VERSION}\n{self._normalized_declared_requirements()}'
         return hashlib.sha256(cache_input.encode()).hexdigest()[:12]
+
+    def _normalized_declared_requirements(self) -> str:
+        """Return the normalized requirements declared in the config."""
+        if self.requirements:
+            return self._normalize_requirements(self.requirements)
+        # Read and normalize requirements file
+        if self.requirements_file is None:  # pragma: no cover
+            # Impossible: check_requirements validator ensures one is set
+            msg = 'Either requirements or requirements_file must be set'
+            raise ValueError(msg)  # pragma: no cover
+        return self._normalize_requirements(self.requirements_file.read_text())
+
+    def lock_fingerprint(self) -> str:
+        """Return a digest of the inputs that determine this environment's lock.
+
+        Covers the normalized declared requirements and the unexpanded
+        configured environment variables (which may point uv at other
+        indexes). Unexpanded values keep the fingerprint stable across
+        machines. A repo lockfile entry whose fingerprint differs was
+        resolved from different inputs and must be re-locked.
+
+        Returns:
+            A ``sha256:``-prefixed hex digest.
+        """
+        payload = json.dumps(
+            {
+                'version': _LOCK_FINGERPRINT_VERSION,
+                'requirements': self._normalized_declared_requirements(),
+                'environment': self.environment,
+            },
+            sort_keys=True,
+        )
+        return f'sha256:{hashlib.sha256(payload.encode()).hexdigest()}'
 
     @property
     def resolved_requirements(self) -> str:
@@ -337,12 +363,22 @@ class UvToolboxSettings(BaseSettings):
         if lockfile_path is None or not lockfile_path.exists():
             return self
 
-        lock = read_lockfile(lockfile_path)
+        self.apply_lock(read_lockfile(lockfile_path))
+        return self
+
+    def apply_lock(self, lock: UvToolboxLock) -> None:
+        """Point each environment at its resolved requirements in lock.
+
+        Entries are applied even when their fingerprint is stale so that
+        read-only commands (such as ``shim``) keep using the existing venvs;
+        commands that install re-lock first and then re-apply.
+
+        Args:
+            lock: The repo lockfile contents to apply.
+        """
         for env in self.environments:
             env_lock = lock.environments.get(env.name)
-            if env_lock is not None:
-                env._resolved_requirements = env_lock.requirements
-        return self
+            env._resolved_requirements = env_lock.requirements if env_lock is not None else None
 
     @classmethod
     def from_context(

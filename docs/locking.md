@@ -60,11 +60,13 @@ hash-verified format used by uv's own lockfile.
 version: 1
 environments:
   formatting:
+    fingerprint: sha256:3b1f...
     requirements: |
       ruff==0.14.14 \
           --hash=sha256:aaaa... \
           --hash=sha256:bbbb...
   testing:
+    fingerprint: sha256:9c0e...
     requirements: |
       pytest==9.0.2 \
           --hash=sha256:cccc...
@@ -72,6 +74,13 @@ environments:
 
 One file covers all environments. Each environment's requirements block contains
 pinned versions with hashes for every supported platform wheel variant.
+
+The `fingerprint` is a digest of the inputs the environment was locked from: its
+declared requirements (inline, or the contents of its `requirements_file`) and
+its configured `environment` variables. Reordering requirements or adding
+comments and blank lines does not change it. Environment variables are
+fingerprinted before `$VAR` expansion, so machine-specific values such as
+`$HOME` never trigger a re-lock.
 
 ### Benefits
 
@@ -99,6 +108,33 @@ When `uv-toolbox.lock` is present, `uvtb install` uses the pre-resolved,
 hash-verified requirements from the lockfile. The machine lockfile is still
 written after the first install, so subsequent runs remain fast.
 
+### Automatic re-locking
+
+`uvtb install` and `uvtb exec` compare each environment's fingerprint with its
+current configuration before installing. If you change an environment's
+requirements (or its `environment` variables) without running `uvtb lock`, that
+environment is re-locked automatically and `uv-toolbox.lock` is rewritten:
+
+```text
+Lockfile is out of date; re-locking: formatting
+Updated /path/to/uv-toolbox.lock
+```
+
+Only changed environments are re-resolved, and their existing pins are kept
+wherever they still satisfy the new requirements, so the diff contains just what
+your change required. Environments you haven't touched are copied unchanged,
+environments added to the config are locked, and entries for environments
+removed from the config are dropped. Commit the updated lockfile along with the
+config change.
+
+Lockfiles written by older uv-toolbox versions have no fingerprints. They are
+treated as out of date and re-locked on the next `uvtb install`, which adds the
+fingerprints. `uvtb shim` never re-locks; it keeps pointing at the existing
+venvs until the next install.
+
+Files pulled in from a `requirements_file` with `-r` or `-c` are not
+fingerprinted. Run `uvtb lock` after editing those.
+
 ### Updating the lockfile
 
 Re-run `uvtb lock` whenever you want to pick up new versions:
@@ -112,6 +148,10 @@ the diff, commit when satisfied.
 
 `uvtb lock --check` seeds resolution with the committed pins and exits nonzero
 when the lockfile is missing or no longer satisfies the configured requirements.
+It also fails, without resolving anything, when an environment's fingerprint is
+missing or doesn't match its configuration. Unlike `install`, it never re-locks,
+so CI catches config changes committed without an updated lockfile, as well as
+lockfiles written before fingerprints existed. Run `uvtb lock` once to add them.
 Compatible pins are preserved, so publishing a newer transitive dependency does
 not create unrelated CI drift. It never rewrites or upgrades the file; run plain
 `uvtb lock` when you deliberately want the latest compatible versions.
@@ -120,6 +160,7 @@ not create unrelated CI drift. It never rewrites or upgrades the file; run plain
 
 | Scenario                                  | What happens                                        |
 | ----------------------------------------- | --------------------------------------------------- |
+| Repo lockfile stale for an environment    | Re-lock that environment → rewrite repo lockfile    |
 | No lockfiles exist                        | Online resolve → write machine lockfile             |
 | Machine lockfile exists                   | Offline-first sync from machine lockfile            |
 | Repo lockfile exists, no machine lockfile | Install from repo lockfile → write machine lockfile |

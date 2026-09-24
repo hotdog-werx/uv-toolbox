@@ -117,5 +117,70 @@ def generate_lock(
             refresh=refresh,
             upgrade=upgrade,
         )
-        lock.environments[env.name] = EnvironmentLock(requirements=compiled)
+        lock.environments[env.name] = EnvironmentLock(
+            requirements=compiled,
+            fingerprint=env.lock_fingerprint(),
+        )
+    return lock
+
+
+def stale_environments(
+    settings: UvToolboxSettings,
+    lock: UvToolboxLock,
+) -> list[str]:
+    """Return names of environments whose lock entry no longer matches the config.
+
+    An entry is stale when it is missing or its fingerprint differs from the
+    environment's current inputs. Entries without a fingerprint (written by
+    older versions) are always stale.
+
+    Args:
+        settings: UV toolbox settings.
+        lock: The existing repo lockfile contents.
+
+    Returns:
+        Stale environment names, in config order.
+    """
+    stale = []
+    for env in settings.environments:
+        env_lock = lock.environments.get(env.name)
+        if env_lock is None or env_lock.fingerprint != env.lock_fingerprint():
+            stale.append(env.name)
+    return stale
+
+
+def update_lock(
+    settings: UvToolboxSettings,
+    existing_lock: UvToolboxLock,
+    stale: list[str],
+) -> UvToolboxLock:
+    """Re-lock stale environments, keeping up-to-date entries untouched.
+
+    Stale environments are resolved with their existing pins as preferences,
+    so only the packages affected by the config change move. Entries for
+    environments no longer in the config are dropped.
+
+    Args:
+        settings: UV toolbox settings.
+        existing_lock: The existing repo lockfile contents.
+        stale: Names of environments to re-lock (see `stale_environments`).
+
+    Returns:
+        The updated lock covering exactly the configured environments.
+    """
+    lock = UvToolboxLock()
+    for env in settings.environments:
+        existing_environment = existing_lock.environments.get(env.name)
+        if existing_environment is not None and env.name not in stale:
+            lock.environments[env.name] = existing_environment
+            continue
+        compiled = generate_environment_lock(
+            env=env,
+            settings=settings,
+            existing_requirements=(existing_environment.requirements if existing_environment is not None else None),
+        )
+        lock.environments[env.name] = EnvironmentLock(
+            requirements=compiled,
+            fingerprint=env.lock_fingerprint(),
+        )
     return lock

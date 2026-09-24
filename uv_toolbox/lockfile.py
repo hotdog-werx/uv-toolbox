@@ -35,9 +35,17 @@ _LiteralDumper.add_representer(_LiteralStr, _literal_representer)
 
 @dataclass
 class EnvironmentLock:
-    """Resolved, pinned requirements for a single environment."""
+    """Resolved, pinned requirements for a single environment.
+
+    Attributes:
+        requirements: Compiled, hash-bearing requirements text.
+        fingerprint: Digest of the declared inputs the requirements were
+            resolved from. None for lockfiles written before fingerprints
+            were recorded, which are always treated as out of date.
+    """
 
     requirements: str
+    fingerprint: str | None = None
 
 
 @dataclass
@@ -53,9 +61,20 @@ def lockfiles_equal(left: UvToolboxLock, right: UvToolboxLock) -> bool:
     if left.version != right.version or left.environments.keys() != right.environments.keys():
         return False
     return all(
-        left.environments[name].requirements.rstrip('\n') == right.environments[name].requirements.rstrip('\n')
+        left.environments[name].fingerprint == right.environments[name].fingerprint
+        and left.environments[name].requirements.rstrip('\n') == right.environments[name].requirements.rstrip('\n')
         for name in left.environments
     )
+
+
+def _environment_data(env_lock: EnvironmentLock) -> dict[str, str]:
+    """Build the serializable mapping for one environment's lock entry."""
+    data: dict[str, str] = {}
+    if env_lock.fingerprint is not None:
+        data['fingerprint'] = env_lock.fingerprint
+    requirements = env_lock.requirements if env_lock.requirements.endswith('\n') else env_lock.requirements + '\n'
+    data['requirements'] = _LiteralStr(requirements)
+    return data
 
 
 def write_lockfile(lock: UvToolboxLock, path: Path) -> None:
@@ -71,14 +90,7 @@ def write_lockfile(lock: UvToolboxLock, path: Path) -> None:
     """
     data = {
         'version': lock.version,
-        'environments': {
-            name: {
-                'requirements': _LiteralStr(
-                    env_lock.requirements if env_lock.requirements.endswith('\n') else env_lock.requirements + '\n',
-                ),
-            }
-            for name, env_lock in lock.environments.items()
-        },
+        'environments': {name: _environment_data(env_lock) for name, env_lock in lock.environments.items()},
     }
     path.write_text(
         yaml.dump(
@@ -106,7 +118,10 @@ def read_lockfile(path: Path) -> UvToolboxLock:
     data = yaml.safe_load(path.read_text())
     version = int(data.get('version', 1))
     environments = {
-        name: EnvironmentLock(requirements=env_data['requirements'])
+        name: EnvironmentLock(
+            requirements=env_data['requirements'],
+            fingerprint=env_data.get('fingerprint'),
+        )
         for name, env_data in (data.get('environments') or {}).items()
     }
     return UvToolboxLock(version=version, environments=environments)

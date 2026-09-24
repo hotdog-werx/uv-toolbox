@@ -375,3 +375,94 @@ def test_normalize_resolved_requirements_preserves_hash_continuation_order() -> 
     assert lines[0].startswith('ruff==')
     assert lines[1].strip().startswith('--hash=sha256:aaaa')
     assert lines[2].strip().startswith('--hash=sha256:bbbb')
+
+
+# ── lock_fingerprint ─────────────────────────────────────────────────────────
+
+
+def test_lock_fingerprint_ignores_order_comments_and_blank_lines() -> None:
+    """Cosmetic edits to requirements do not change the fingerprint."""
+    plain = UvToolboxEnvironment(name='env1', requirements='ruff\nblack\n')
+    cosmetic = UvToolboxEnvironment(name='env1', requirements='# tools\nblack\n\n  ruff\n')
+
+    assert plain.lock_fingerprint() == cosmetic.lock_fingerprint()
+    assert plain.lock_fingerprint().startswith('sha256:')
+
+
+@pytest.mark.parametrize(
+    'changed',
+    [
+        {'requirements': 'ruff>=0.15'},
+        {'requirements': 'ruff', 'environment': {'UV_INDEX_URL': 'https://example.invalid'}},
+    ],
+    ids=['requirements', 'environment'],
+)
+def test_lock_fingerprint_changes_with_resolution_inputs(changed: dict[str, object]) -> None:
+    """Changing requirements or configured environment variables changes the fingerprint."""
+    base = UvToolboxEnvironment(name='env1', requirements='ruff')
+    modified = UvToolboxEnvironment.model_validate({'name': 'env1', **changed})
+
+    assert modified.lock_fingerprint() != base.lock_fingerprint()
+
+
+def test_lock_fingerprint_uses_unexpanded_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fingerprints hash the configured variable text, so machine-specific expansions do not cause re-locks."""
+    env = UvToolboxEnvironment(
+        name='env1',
+        requirements='ruff',
+        environment={'UV_CACHE_DIR': '$HOME/.cache'},
+    )
+    monkeypatch.setenv('HOME', '/home/one')
+    first = env.lock_fingerprint()
+    monkeypatch.setenv('HOME', '/home/two')
+
+    assert env.lock_fingerprint() == first
+
+
+def test_lock_fingerprint_tracks_requirements_file_contents(tmp_path: Path) -> None:
+    """A requirements_file environment's fingerprint follows the file's contents, not its path."""
+    req_file = tmp_path / 'requirements.txt'
+    req_file.write_text('ruff\n')
+    env = UvToolboxEnvironment(name='env1', requirements_file=req_file)
+    inline = UvToolboxEnvironment(name='env1', requirements='ruff')
+
+    assert env.lock_fingerprint() == inline.lock_fingerprint()
+    req_file.write_text('ruff>=0.15\n')
+    assert env.lock_fingerprint() != inline.lock_fingerprint()
+
+
+def test_apply_lock_replaces_and_clears_resolved_requirements() -> None:
+    """apply_lock sets each environment's resolved requirements, clearing those absent from the lock."""
+    settings = _make_settings(
+        envs=[
+            {'name': 'env1', 'requirements': 'ruff'},
+            {'name': 'env2', 'requirements': 'black'},
+        ],
+    )
+    settings.environments[1]._resolved_requirements = 'black==24.0.0'
+
+    settings.apply_lock(
+        UvToolboxLock(environments={'env1': EnvironmentLock(requirements='ruff==0.15.0')}),
+    )
+
+    assert settings.environments[0].resolved_requirements == 'ruff==0.15.0'
+    assert settings.environments[1]._resolved_requirements is None
+
+
+def test_inject_resolved_requirements_applies_stale_entries(tmp_path: Path) -> None:
+    """Loading settings still applies entries with a missing fingerprint, so read-only commands keep working."""
+    write_lockfile(
+        UvToolboxLock(environments={'env1': EnvironmentLock(requirements='ruff==0.14.14\n')}),
+        tmp_path / 'uv-toolbox.lock',
+    )
+    config = tmp_path / 'uv-toolbox.yaml'
+    config.write_text('environments:\n  - name: env1\n    requirements: ruff>=0.15\n')
+
+    settings = UvToolboxSettings.model_validate(
+        {
+            'config_file': config,
+            'environments': [{'name': 'env1', 'requirements': 'ruff>=0.15'}],
+        },
+    )
+
+    assert settings.environments[0].resolved_requirements == 'ruff==0.14.14\n'

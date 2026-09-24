@@ -5,14 +5,15 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 from typer.testing import CliRunner
 
 from tests.utils import create_fake_venv
 from uv_toolbox import cli as cli_module
 from uv_toolbox.cli import app
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
-from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock, write_lockfile
-from uv_toolbox.settings import UvToolboxSettings
+from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock, read_lockfile, write_lockfile
+from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -45,6 +46,10 @@ def _write_config(
     config_path = tmp_path / 'uvtb.yaml'
     config_path.write_text(contents)
     return config_path
+
+
+def _fingerprint(name: str, requirements: str) -> str:
+    return UvToolboxEnvironment(name=name, requirements=requirements).lock_fingerprint()
 
 
 def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
@@ -420,7 +425,12 @@ def test_lock_check_succeeds_without_writing(
         envs=[('env1', 'ruff')],
     )
     lock_data = UvToolboxLock(
-        environments={'env1': EnvironmentLock(requirements='ruff==0.14.14')},
+        environments={
+            'env1': EnvironmentLock(
+                requirements='ruff==0.14.14',
+                fingerprint=_fingerprint('env1', 'ruff'),
+            ),
+        },
     )
     write_lockfile(lock_data, tmp_path / 'uv-toolbox.lock')
     generate_mock = mocker.patch(
@@ -454,7 +464,10 @@ def test_lock_check_reports_stale_lock(
     write_lockfile(
         UvToolboxLock(
             environments={
-                'env1': EnvironmentLock(requirements='ruff==0.14.14'),
+                'env1': EnvironmentLock(
+                    requirements='ruff==0.14.14',
+                    fingerprint=_fingerprint('env1', 'ruff'),
+                ),
             },
         ),
         tmp_path / 'uv-toolbox.lock',
@@ -462,7 +475,12 @@ def test_lock_check_reports_stale_lock(
     mocker.patch(
         'uv_toolbox.cli.generate_lock',
         return_value=UvToolboxLock(
-            environments={'env1': EnvironmentLock(requirements='ruff==0.15.0')},
+            environments={
+                'env1': EnvironmentLock(
+                    requirements='ruff==0.15.0',
+                    fingerprint=_fingerprint('env1', 'ruff'),
+                ),
+            },
         ),
     )
 
@@ -490,6 +508,7 @@ def test_lock_check_does_not_upgrade_compatible_transitive_dependencies(
         environments={
             'tools': EnvironmentLock(
                 requirements='direct-package==1\ntransitive-package==1',
+                fingerprint=_fingerprint('tools', 'direct-package>=1'),
             ),
         },
     )
@@ -568,3 +587,269 @@ def test_lock_handles_uv_toolbox_error(
 
     assert result.exit_code == 1
     assert 'compile failed' in result.stderr
+
+
+@pytest.mark.parametrize(
+    'fingerprint',
+    [None, _fingerprint('env1', 'black')],
+    ids=['missing', 'mismatched'],
+)
+def test_lock_check_fails_on_stale_fingerprint(
+    mocker: MockerFixture,
+    tmp_path: Path,
+    fingerprint: str | None,
+) -> None:
+    """`lock --check` fails without resolving when an entry's fingerprint is missing or stale."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    lock_path = tmp_path / 'uv-toolbox.lock'
+    write_lockfile(
+        UvToolboxLock(
+            environments={
+                'env1': EnvironmentLock(requirements='ruff==0.14.14', fingerprint=fingerprint),
+            },
+        ),
+        lock_path,
+    )
+    original_lock_text = lock_path.read_text()
+    generate_mock = mocker.patch('uv_toolbox.cli.generate_lock')
+
+    result = runner.invoke(
+        app,
+        ['--config', str(config_path), 'lock', '--check'],
+    )
+
+    assert result.exit_code == 1
+    assert 'Configuration changed for: env1' in result.stderr
+    generate_mock.assert_not_called()
+    assert lock_path.read_text() == original_lock_text
+
+
+# ── automatic re-locking ─────────────────────────────────────────────────────
+
+
+def _fake_compile(*, env: UvToolboxEnvironment, **_kwargs: object) -> str:
+    return f'{env.name}-locked==2'
+
+
+def test_install_relocks_stale_environments(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """`install` re-locks only stale environments, rewrites the lockfile, and installs the fresh pins."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('current', 'ruff'), ('changed', 'black>=25')],
+    )
+    lock_path = tmp_path / 'uv-toolbox.lock'
+    write_lockfile(
+        UvToolboxLock(
+            environments={
+                'current': EnvironmentLock(
+                    requirements='ruff==0.14.14',
+                    fingerprint=_fingerprint('current', 'ruff'),
+                ),
+                'changed': EnvironmentLock(
+                    requirements='black==24.0.0',
+                    fingerprint=_fingerprint('changed', 'black'),
+                ),
+            },
+        ),
+        lock_path,
+    )
+    compile_mock = mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        side_effect=_fake_compile,
+    )
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install'])
+
+    assert result.exit_code == 0
+    assert 're-locking: changed' in result.stderr
+    compile_mock.assert_called_once()
+    assert compile_mock.call_args.kwargs['env'].name == 'changed'
+    assert compile_mock.call_args.kwargs['existing_requirements'].rstrip('\n') == 'black==24.0.0'
+
+    updated = read_lockfile(lock_path)
+    assert updated.environments['current'].requirements.rstrip('\n') == 'ruff==0.14.14'
+    assert updated.environments['changed'].requirements.rstrip('\n') == 'changed-locked==2'
+    assert updated.environments['changed'].fingerprint == _fingerprint('changed', 'black>=25')
+
+    installed = {call.kwargs['env'].name: call.kwargs['env'] for call in init_mock.call_args_list}
+    assert installed['changed'].resolved_requirements == 'changed-locked==2'
+
+
+def test_install_relocks_lockfile_without_fingerprints(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """Lockfiles written before fingerprints existed are re-locked seamlessly instead of failing."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    lock_path = tmp_path / 'uv-toolbox.lock'
+    lock_path.write_text(
+        'version: 1\nenvironments:\n  env1:\n    requirements: |\n      ruff==0.14.14\n',
+    )
+    compile_mock = mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        return_value='ruff==0.14.14',
+    )
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install'])
+
+    assert result.exit_code == 0
+    assert 're-locking: env1' in result.stderr
+    assert compile_mock.call_args.kwargs['existing_requirements'].rstrip('\n') == 'ruff==0.14.14'
+    assert read_lockfile(lock_path).environments['env1'].fingerprint == _fingerprint('env1', 'ruff')
+    init_mock.assert_called_once()
+
+
+def test_install_leaves_current_lockfile_untouched(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """`install` neither resolves nor rewrites a lockfile whose fingerprints all match."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    lock_path = tmp_path / 'uv-toolbox.lock'
+    write_lockfile(
+        UvToolboxLock(
+            environments={
+                'env1': EnvironmentLock(
+                    requirements='ruff==0.14.14',
+                    fingerprint=_fingerprint('env1', 'ruff'),
+                ),
+            },
+        ),
+        lock_path,
+    )
+    original_lock_text = lock_path.read_text()
+    compile_mock = mocker.patch('uv_toolbox.lock.generate_environment_lock')
+    mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install'])
+
+    assert result.exit_code == 0
+    compile_mock.assert_not_called()
+    assert lock_path.read_text() == original_lock_text
+    assert 'Updated' not in result.stderr
+
+
+def test_install_drops_removed_environments_from_lockfile(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """Entries for environments removed from the config are pruned without re-resolving the rest."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    lock_path = tmp_path / 'uv-toolbox.lock'
+    write_lockfile(
+        UvToolboxLock(
+            environments={
+                'env1': EnvironmentLock(
+                    requirements='ruff==0.14.14',
+                    fingerprint=_fingerprint('env1', 'ruff'),
+                ),
+                'removed': EnvironmentLock(
+                    requirements='black==24.0.0',
+                    fingerprint=_fingerprint('removed', 'black'),
+                ),
+            },
+        ),
+        lock_path,
+    )
+    compile_mock = mocker.patch('uv_toolbox.lock.generate_environment_lock')
+    mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install'])
+
+    assert result.exit_code == 0
+    compile_mock.assert_not_called()
+    assert set(read_lockfile(lock_path).environments) == {'env1'}
+
+
+def test_install_handles_relock_error(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """A resolution failure while re-locking exits with code 1 and installs nothing."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff')],
+    )
+    write_lockfile(
+        UvToolboxLock(environments={'env1': EnvironmentLock(requirements='ruff==0.14.14')}),
+        tmp_path / 'uv-toolbox.lock',
+    )
+    mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        side_effect=UvToolboxError('compile failed'),
+    )
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install'])
+
+    assert result.exit_code == 1
+    assert 'compile failed' in result.stderr
+    init_mock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'fingerprint',
+    [None, _fingerprint('env1', 'ruff')],
+    ids=['missing', 'mismatched'],
+)
+def test_exec_relocks_stale_environment(
+    mocker: MockerFixture,
+    tmp_path: Path,
+    fingerprint: str | None,
+) -> None:
+    """`exec` re-locks an environment with a missing or stale fingerprint and runs against the fresh pins."""
+    config_path = _write_config(
+        tmp_path,
+        venv_path=tmp_path / '.uv-toolbox',
+        envs=[('env1', 'ruff>=0.15')],
+    )
+    lock_path = tmp_path / 'uv-toolbox.lock'
+    write_lockfile(
+        UvToolboxLock(
+            environments={
+                'env1': EnvironmentLock(requirements='ruff==0.14.14', fingerprint=fingerprint),
+            },
+        ),
+        lock_path,
+    )
+    mocker.patch.object(sys, 'argv', ['uvtb', 'exec', '--', 'ruff'])
+    mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        return_value='ruff==0.15.0',
+    )
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+    mocker.patch('uv_toolbox.cli.run_checked')
+
+    result = runner.invoke(
+        app,
+        ['--config', str(config_path), 'exec', '--', 'ruff'],
+    )
+
+    assert result.exit_code == 0
+    updated = read_lockfile(lock_path).environments['env1']
+    assert updated.requirements.rstrip('\n') == 'ruff==0.15.0'
+    assert updated.fingerprint == _fingerprint('env1', 'ruff>=0.15')
+    assert init_mock.call_args.kwargs['env'].resolved_requirements == 'ruff==0.15.0'

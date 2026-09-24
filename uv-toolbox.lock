@@ -1,6 +1,7 @@
 version: 1
 environments:
   repolish:
+    fingerprint: sha256:7fe3d801bfab29dede93b20a8b6ec37a59a29e9329114e54a60a93477082da4a
     requirements: |
       annotated-types==0.8.0 \
           --hash=sha256:13b2beaad985e05e2d6407ee4c4f35590b11f8d693a258a561055cac8f64cab7 \

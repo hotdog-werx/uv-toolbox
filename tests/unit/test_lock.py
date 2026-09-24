@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from uv_toolbox.lock import generate_environment_lock, generate_lock
+from uv_toolbox.lock import generate_environment_lock, generate_lock, stale_environments, update_lock
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
@@ -263,6 +263,7 @@ def test_generate_lock_returns_environment_lock_instances(
     lock = generate_lock(settings=settings)
 
     assert isinstance(lock.environments['fmt'], EnvironmentLock)
+    assert lock.environments['fmt'].fingerprint == settings.environments[0].lock_fingerprint()
 
 
 def test_generate_lock_passes_existing_environment_pins(
@@ -403,3 +404,66 @@ def test_generate_lock_forwards_upgrade_to_environments(
         refresh=False,
         upgrade=True,
     )
+
+
+def test_stale_environments_flags_missing_and_mismatched_entries(tmp_path: Path) -> None:
+    """Entries that are absent, lack a fingerprint, or carry a different fingerprint are stale."""
+    settings = _make_settings(
+        tmp_path,
+        envs=[
+            UvToolboxEnvironment(name='current', requirements='ruff'),
+            UvToolboxEnvironment(name='legacy', requirements='ruff'),
+            UvToolboxEnvironment(name='changed', requirements='black>=25'),
+            UvToolboxEnvironment(name='missing', requirements='mypy'),
+        ],
+    )
+    lock = UvToolboxLock(
+        environments={
+            'current': EnvironmentLock(
+                requirements=_COMPILED,
+                fingerprint=settings.environments[0].lock_fingerprint(),
+            ),
+            'legacy': EnvironmentLock(requirements=_COMPILED),
+            'changed': EnvironmentLock(
+                requirements=_COMPILED,
+                fingerprint=UvToolboxEnvironment(name='changed', requirements='black').lock_fingerprint(),
+            ),
+        },
+    )
+
+    assert stale_environments(settings, lock) == ['legacy', 'changed', 'missing']
+
+
+def test_update_lock_reuses_current_entries_and_seeds_stale_ones(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """Only stale environments are compiled, seeded with their previous pins; removed ones are dropped."""
+    settings = _make_settings(
+        tmp_path,
+        envs=[
+            UvToolboxEnvironment(name='current', requirements='ruff'),
+            UvToolboxEnvironment(name='stale', requirements='black>=25'),
+            UvToolboxEnvironment(name='new', requirements='mypy'),
+        ],
+    )
+    current_entry = EnvironmentLock(requirements=_COMPILED, fingerprint='sha256:current')
+    existing_lock = UvToolboxLock(
+        environments={
+            'current': current_entry,
+            'stale': EnvironmentLock(requirements='black==24.0.0'),
+            'removed': EnvironmentLock(requirements='isort==5.0.0'),
+        },
+    )
+    compile_mock = mocker.patch(
+        'uv_toolbox.lock.generate_environment_lock',
+        return_value='compiled',
+    )
+
+    lock = update_lock(settings, existing_lock, ['stale', 'new'])
+
+    assert list(lock.environments) == ['current', 'stale', 'new']
+    assert lock.environments['current'] is current_entry
+    seeded = {call.kwargs['env'].name: call.kwargs['existing_requirements'] for call in compile_mock.call_args_list}
+    assert seeded == {'stale': 'black==24.0.0', 'new': None}
+    assert lock.environments['stale'].fingerprint == settings.environments[1].lock_fingerprint()
