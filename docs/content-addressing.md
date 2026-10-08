@@ -12,7 +12,9 @@ requirements**, not by user-defined names.
 ```yaml
 environments:
   - name: formatting
-    requirements: ruff==0.13.0 black==24.0.0
+    requirements: |
+      ruff==0.13.0
+      black==24.0.0
   - name: testing
     requirements: pytest==8.0.0
 ```
@@ -70,7 +72,9 @@ No manual `project_name` needed - the hash provides automatic isolation:
 # Just define your environments - it works!
 environments:
   - name: dev
-    requirements: ruff pytest
+    requirements: |
+      ruff
+      pytest
 ```
 
 ### Works from Subdirectories
@@ -99,7 +103,7 @@ Requirements are normalized before hashing to ensure consistency:
 
 - **Algorithm**: SHA-256 (truncated to 12 hex characters)
 - **Format**: `a3f7e2d4c1b9` (12 chars = 48 bits)
-- **Collision probability**: Negligible (~16M venvs needed for 1% collision
+- **Collision probability**: Negligible (~2.4M venvs needed for a 1% collision
   chance)
 
 ### Requirements Files
@@ -126,7 +130,9 @@ By default, venvs are stored in `~/.cache/uv-toolbox/`:
 # No venv_path needed - uses default
 environments:
   - name: dev
-    requirements: ruff pytest
+    requirements: |
+      ruff
+      pytest
 ```
 
 **Platform-specific defaults:**
@@ -143,7 +149,9 @@ You can still use project-local storage:
 venv_path: .uv-toolbox # Relative to config file
 environments:
   - name: dev
-    requirements: ruff pytest
+    requirements: |
+      ruff
+      pytest
 ```
 
 This stores venvs in `.uv-toolbox/<hash>/` within your project.
@@ -169,7 +177,7 @@ just what was asked for.
 If you manually install packages:
 
 ```bash
-uvtb exec --env dev -- pip install extra-package
+uvtb exec --env dev -- uv pip install extra-package
 ```
 
 The venv is modified but the hash doesn't change. This is **by design**:
@@ -180,31 +188,42 @@ The venv is modified but the hash doesn't change. This is **by design**:
 
 ### Order Independence
 
-Package order doesn't matter:
+Requirement line order doesn't matter:
 
 ```yaml
 # These create the SAME venv:
-requirements: ruff black
-requirements: black ruff
+requirements: |
+  ruff
+  black
+---
+requirements: |
+  black
+  ruff
 ```
 
 ### Whitespace & Comments
 
-Comments and whitespace are normalized away:
+Full-line comments, blank lines, and leading/trailing whitespace are normalized
+away:
 
 ```yaml
 requirements: |
   # Formatting tools
   ruff==0.13.0
 
-  black==24.0.0  # code formatter
+    black==24.0.0
 ```
 
 Hashes the same as:
 
 ```yaml
-requirements: ruff==0.13.0 black==24.0.0
+requirements: |
+  black==24.0.0
+  ruff==0.13.0
 ```
+
+Trailing comments on a requirement line (`ruff==0.13.0  # linter`) are **not**
+stripped, so they do change the hash.
 
 ## Migration from Previous Versions
 
@@ -223,5 +242,6 @@ requirements: ruff==0.13.0 black==24.0.0
 
 For more implementation details, see the source code:
 
-- [Hashing logic](https://github.com/yourusername/uv-toolbox/blob/main/uv_toolbox/settings.py#L106-L124)
-- [Path resolution](https://github.com/yourusername/uv-toolbox/blob/main/uv_toolbox/settings.py#L126-L134)
+- [`uv_toolbox/settings.py`](https://github.com/hotdog-werx/uv-toolbox/blob/master/uv_toolbox/settings.py)
+  — `UvToolboxEnvironment._get_requirements_hash()` (hashing) and
+  `UvToolboxEnvironment.venv_path()` (path resolution)

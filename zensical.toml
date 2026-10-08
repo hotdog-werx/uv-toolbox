@@ -6,7 +6,9 @@ repo_url = "https://github.com/hotdog-werx/uv-toolbox"
 repo_name = "hotdog-werx/uv-toolbox"
 
 nav = [
+  { "Home" = "index.md" },
   { "Getting Started" = [{ "Quick Start" = "quick-start.md" }] },
+  { "Concepts" = [{ "Locking" = "locking.md" }, { "Content-Addressed Storage" = "content-addressing.md" }] },
   { "Integrations" = [{ "mise" = "mise.md" }] },
 ]
 

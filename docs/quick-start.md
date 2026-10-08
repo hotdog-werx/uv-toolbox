@@ -205,5 +205,3 @@ See [Locking](locking.md) for the full workflow.
   upgrades
 - Set up the [mise plugin](mise.md) for automatic PATH management
 - Learn about [content-addressed storage](content-addressing.md)
-- See the [full configuration reference](configuration.md) (coming soon)
-- Check out [advanced usage patterns](advanced.md) (coming soon)
