@@ -1,199 +1,36 @@
-import shutil
-import tempfile
 from pathlib import Path
 
-from uv_toolbox.errors import ExternalCommandError
-from uv_toolbox.process import run_checked
+from uv_toolbox.project import lock_environment, sync_environment
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
 
-def create_virtualenv(
+def _machine_lock_path(venv_path: Path) -> Path:
+    """Path for the machine lockfile (a uv.lock), stored as a sibling of the venv directory.
+
+    Kept outside the venv so clearing the venv does not delete it.
+    """
+    return venv_path.parent / f'{venv_path.name}.uv.lock'
+
+
+def _machine_uv_lock(
     env: UvToolboxEnvironment,
     settings: UvToolboxSettings,
     *,
-    clear: bool = False,
-) -> None:
-    """Create a Python virtual environment at the specified path.
+    upgrade: bool,
+) -> str:
+    """Return the machine lock for an environment without a repo lockfile entry.
 
-    Args:
-        env: The UV toolbox environment to create the virtualenv for.
-        settings: The UV toolbox settings.
-        clear: If True, clear the existing venv if it already exists.
+    The first install (or an upgrade) locks the environment online and keeps
+    the resulting uv.lock next to the venv, so later installs can sync from it
+    without resolving again.
     """
-    args = ['uv', 'venv', str(env.venv_path(settings=settings))]
-    if clear:
-        args.append('--clear')
-
-    run_checked(
-        args=args,
-        extra_env=env.process_env(settings=settings),
-        capture_stdout=False,
-        capture_stderr=False,
-        show_command=settings.show_commands,
-    )
-
-
-def _lockfile_path(venv_path: Path) -> Path:
-    """Path for the requirements lockfile, stored as a sibling of the venv directory.
-
-    Kept outside the venv so `uv venv --clear` does not delete it.
-    """
-    return venv_path.parent / f'{venv_path.name}.lock'
-
-
-def _sync_from_lockfile(
-    env: UvToolboxEnvironment,
-    settings: UvToolboxSettings,
-    lockfile: Path,
-) -> None:
-    """Sync the environment from a lockfile, trying the uv cache first.
-
-    Attempts an offline sync (no network, no re-resolution) and falls back to
-    an online sync if the cache does not contain all required packages.
-
-    Args:
-        env: The UV toolbox environment.
-        settings: The UV toolbox settings.
-        lockfile: Path to the pinned requirements lockfile.
-    """
-    try:
-        run_checked(
-            args=['uv', 'pip', 'sync', str(lockfile), '--offline'],
-            extra_env=env.process_env(settings=settings),
-            capture_stdout=False,
-            capture_stderr=False,
-            show_command=settings.show_commands,
-        )
-    except ExternalCommandError:
-        run_checked(
-            args=['uv', 'pip', 'sync', str(lockfile)],
-            extra_env=env.process_env(settings=settings),
-            capture_stdout=False,
-            capture_stderr=False,
-            show_command=settings.show_commands,
-        )
-
-
-def _install_from_resolved(
-    env: UvToolboxEnvironment,
-    settings: UvToolboxSettings,
-    lockfile: Path,
-) -> None:
-    """Install from repo-lockfile resolved requirements and write machine lockfile.
-
-    Uses the pre-compiled, hash-bearing requirements injected from uv-toolbox.lock.
-    uv pip sync auto-enables --require-hashes when the file contains --hash= lines.
-    The machine lockfile is written with the same resolved content so the next
-    install can use the offline-first path without re-reading the repo lockfile.
-
-    Args:
-        env: The UV toolbox environment.
-        settings: The UV toolbox settings.
-        lockfile: Path where the machine lockfile should be written.
-    """
-    resolved = env.resolved_requirements
-    temp_dir = Path(tempfile.mkdtemp())
-    try:
-        temp_req_file = temp_dir / f'requirements_{env.name}.txt'
-        temp_req_file.write_text(resolved)
-
-        run_checked(
-            args=['uv', 'pip', 'sync', str(temp_req_file)],
-            extra_env=env.process_env(settings=settings),
-            capture_stdout=False,
-            capture_stderr=False,
-            show_command=settings.show_commands,
-        )
-
-        lockfile.parent.mkdir(parents=True, exist_ok=True)
-        lockfile.write_text(resolved)
-    finally:
-        shutil.rmtree(temp_dir)
-
-
-def _initial_install(
-    env: UvToolboxEnvironment,
-    settings: UvToolboxSettings,
-    lockfile: Path,
-) -> None:
-    """Install from the configured requirements source and export a lockfile.
-
-    Performs a full online resolution, then freezes the resolved packages into a
-    lockfile so future installs can use the offline-first path.
-
-    Args:
-        env: The UV toolbox environment.
-        settings: The UV toolbox settings.
-        lockfile: Path where the generated lockfile should be written.
-    """
-    temp_dir: Path | None = None
-
-    try:
-        if env.requirements_file is not None:
-            req_source = str(env.requirements_file)
-        else:
-            temp_dir = Path(tempfile.mkdtemp())
-            temp_req_file = temp_dir / f'requirements_{env.name}.txt'
-            temp_req_file.write_text(env.resolved_requirements)
-            req_source = str(temp_req_file)
-
-        # `uv pip sync` treats the input as the complete environment and does
-        # not resolve undeclared transitive dependencies. Install with
-        # `--exact` instead: uv resolves the full graph while still removing
-        # packages that are not part of that graph.
-        run_checked(
-            args=['uv', 'pip', 'install', '--exact', '-r', req_source],
-            extra_env=env.process_env(settings=settings),
-            capture_stdout=False,
-            capture_stderr=False,
-            show_command=settings.show_commands,
-        )
-
-        frozen = run_checked(
-            args=['uv', 'pip', 'freeze'],
-            extra_env=env.process_env(settings=settings),
-            capture_stdout=True,
-            capture_stderr=False,
-            show_command=settings.show_commands,
-        )
-        lockfile.parent.mkdir(parents=True, exist_ok=True)
-        lockfile.write_text(frozen)
-    finally:
-        if temp_dir is not None:
-            shutil.rmtree(temp_dir)
-
-
-def install_requirements(
-    env: UvToolboxEnvironment,
-    settings: UvToolboxSettings,
-    *,
-    upgrade: bool = False,
-) -> None:
-    """Install the requirements for the given environment into its virtualenv.
-
-    On the first install (or when upgrade=True), resolves packages online and
-    writes a pinned lockfile. On subsequent installs, syncs from the lockfile
-    using the uv package cache (offline-first, with an online fallback if the
-    cache is cold).
-
-    Args:
-        env: The UV toolbox environment to install requirements for.
-        settings: The UV toolbox settings.
-        upgrade: If True, delete the existing lockfile and re-resolve from
-            scratch, refreshing pinned versions and their transitive deps.
-    """
-    venv_path = env.venv_path(settings=settings)
-    lockfile = _lockfile_path(venv_path)
-
-    if upgrade:
-        lockfile.unlink(missing_ok=True)
-
-    if lockfile.exists():
-        _sync_from_lockfile(env=env, settings=settings, lockfile=lockfile)
-    elif env._resolved_requirements is not None:
-        _install_from_resolved(env=env, settings=settings, lockfile=lockfile)
-    else:
-        _initial_install(env=env, settings=settings, lockfile=lockfile)
+    machine_lock = _machine_lock_path(env.venv_path(settings=settings))
+    if machine_lock.exists() and not upgrade:
+        return machine_lock.read_text()
+    uv_lock = lock_environment(env, settings, upgrade=upgrade)
+    machine_lock.parent.mkdir(parents=True, exist_ok=True)
+    machine_lock.write_text(uv_lock)
+    return uv_lock
 
 
 def initialize_virtualenv(
@@ -203,18 +40,19 @@ def initialize_virtualenv(
     clear: bool = False,
     upgrade: bool = False,
 ) -> None:
-    """Create and set up the virtual environment for the given environment.
+    """Create or update the virtual environment for the given environment.
+
+    Installs from the environment's uv.lock in the repo lockfile when there is
+    one, otherwise from a machine lock next to the venv.
 
     Args:
         env: The UV toolbox environment to initialize.
         settings: The UV toolbox settings.
         clear: If True, clear and recreate the virtual environment.
-        upgrade: If True, re-resolve dependencies and refresh the lockfile.
+        upgrade: If True and there is no repo lockfile entry, re-resolve
+            dependencies and refresh the machine lock.
     """
-    venv_path = env.venv_path(settings=settings)
-
-    # Only create venv if it doesn't exist or clear is True
-    if not venv_path.exists() or clear:
-        create_virtualenv(env=env, settings=settings, clear=True)
-
-    install_requirements(env=env, settings=settings, upgrade=upgrade)
+    uv_lock = env.locked_uv_lock
+    if uv_lock is None:
+        uv_lock = _machine_uv_lock(env, settings, upgrade=upgrade)
+    sync_environment(env, settings, uv_lock=uv_lock, clear=clear)

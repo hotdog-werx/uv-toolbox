@@ -7,7 +7,7 @@ repo_name = "hotdog-werx/uv-toolbox"
 
 nav = [
   { "Home" = "index.md" },
-  { "Getting Started" = [{ "Quick Start" = "quick-start.md" }] },
+  { "Getting Started" = [{ "Quick Start" = "quick-start.md" }, { "Configuration" = "configuration.md" }, { "Migrating to uv Project Mode" = "migrating.md" }] },
   { "Concepts" = [{ "Locking" = "locking.md" }, { "Content-Addressed Storage" = "content-addressing.md" }] },
   { "Integrations" = [{ "mise" = "mise.md" }] },
 ]

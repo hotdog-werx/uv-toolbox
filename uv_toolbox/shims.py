@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
+from uv_toolbox.project import logical_requirement_lines
 from uv_toolbox.utils import _venv_bin_path
 
 if typing.TYPE_CHECKING:
@@ -31,27 +32,12 @@ def _site_packages_paths(venv_path: Path) -> list[Path]:
     return [path for path in candidates if path.is_dir()]
 
 
-def _logical_requirement_lines(content: str) -> Iterator[str]:
-    """Yield logical, non-comment lines from requirements-file content."""
-    pending = ''
-    for raw_line in content.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith('#'):
-            continue
-        pending += line
-        if pending.endswith('\\'):
-            pending = pending[:-1].rstrip() + ' '
-            continue
-        yield pending
-        pending = ''
-    if pending:
-        yield pending
-
-
 def _requirement_specs(env: UvToolboxEnvironment) -> Iterator[str]:
     """Yield the environment's first-order requirement specifications."""
-    content = env.requirements_file.read_text() if env.requirements_file is not None else env.requirements or ''
-    yield from _logical_requirement_lines(content)
+    if env.dependencies is not None:
+        yield from env.dependencies
+        return
+    yield from logical_requirement_lines(env.requirements_text())
 
 
 def _bare_vcs_key(spec: str) -> tuple[str, str | None] | None:

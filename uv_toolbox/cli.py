@@ -1,13 +1,16 @@
+import difflib
 import os
 import sys
+import warnings
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, TextIO
 
 import typer
 
-from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
-from uv_toolbox.lock import generate_lock, stale_environments, update_lock
+from uv_toolbox.errors import CommandDelimiterRequiredError, LockfileOutdatedError, UvToolboxError
+from uv_toolbox.lock import check_lock, generate_lock, stale_environments, update_lock
 from uv_toolbox.lockfile import lockfiles_equal, read_lockfile, write_lockfile
+from uv_toolbox.migrate import migrate_config
 from uv_toolbox.process import run_checked
 from uv_toolbox.settings import UvToolboxSettings
 from uv_toolbox.shims import create_shims
@@ -15,6 +18,18 @@ from uv_toolbox.utils import _filter_nulls
 from uv_toolbox.uv_helpers import initialize_virtualenv
 
 app = typer.Typer(help='CLI tool for managing UV tool environments.')
+
+
+def _show_warning(  # noqa: PLR0913
+    message: Warning | str,
+    category: type[Warning],
+    filename: str,  # noqa: ARG001
+    lineno: int,  # noqa: ARG001
+    file: TextIO | None = None,  # noqa: ARG001
+    line: str | None = None,  # noqa: ARG001
+) -> None:
+    """Print warnings (such as config deprecations) without source locations."""
+    typer.secho(f'{category.__name__}: {message}', err=True, fg=typer.colors.YELLOW)
 
 
 def _require_lockfile_path(
@@ -44,12 +59,17 @@ def _require_lockfile_path(
 def _check_lockfile(
     settings: UvToolboxSettings,
     lockfile_path: Path,
-    *,
-    refresh: bool = False,
-    upgrade: bool = False,
 ) -> None:
-    """Validate that committed pins still satisfy the configured requirements."""
+    """Validate that the repo lockfile is up to date with the configuration.
+
+    Never writes the lockfile. Fails on an outdated lockfile format, on
+    fingerprint mismatches (configuration changed since locking), and when
+    `uv lock --check` reports that an environment's uv.lock no longer
+    satisfies its dependencies.
+    """
     existing_lock = read_lockfile(lockfile_path)
+    if existing_lock.outdated_format:
+        raise LockfileOutdatedError(lockfile_path)
     stale = stale_environments(settings, existing_lock)
     if stale:
         typer.secho(
@@ -59,15 +79,11 @@ def _check_lockfile(
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=1)
-    lock_data = generate_lock(
-        settings=settings,
-        existing_lock=existing_lock,
-        refresh=refresh,
-        upgrade=upgrade,
-    )
-    if not lockfiles_equal(lock_data, existing_lock):
+    failures = check_lock(settings, existing_lock)
+    if failures:
+        details = ''.join(f'\n  {name}: {problem}' for name, problem in failures.items())
         typer.secho(
-            f'Lockfile is out of date: {lockfile_path}. Run `uv-toolbox lock`.',
+            f'Lockfile is out of date: {lockfile_path}. Run `uv-toolbox lock`.{details}',
             err=True,
             fg=typer.colors.RED,
         )
@@ -79,11 +95,22 @@ def _write_lockfile(
     settings: UvToolboxSettings,
     lockfile_path: Path,
     *,
-    refresh: bool = False,
     upgrade: bool = False,
+    upgrade_packages: list[str] | None = None,
+    refresh: bool = False,
 ) -> None:
-    """Resolve current requirements and write their pins to the repo lockfile."""
-    lock_data = generate_lock(settings=settings, refresh=refresh, upgrade=upgrade)
+    """Lock every environment and write the repo lockfile, keeping existing pins."""
+    existing_lock = read_lockfile(lockfile_path) if lockfile_path.exists() else None
+    lock_data = generate_lock(
+        settings=settings,
+        existing_lock=existing_lock,
+        upgrade=upgrade,
+        upgrade_packages=upgrade_packages or [],
+        refresh=refresh,
+    )
+    if existing_lock is not None and lockfiles_equal(lock_data, existing_lock):
+        typer.echo(f'Lockfile is up to date: {lockfile_path}')
+        return
     write_lockfile(lock_data, lockfile_path)
     typer.echo(f'Wrote {lockfile_path}')
 
@@ -103,7 +130,13 @@ def _relock_if_stale(settings: UvToolboxSettings) -> None:
     configured = {env.name for env in settings.environments}
     if not stale and existing_lock.environments.keys() == configured:
         return
-    if stale:
+    if existing_lock.outdated_format:
+        typer.secho(
+            f'Lockfile format is outdated; re-locking: {lockfile_path}',
+            err=True,
+            fg=typer.colors.YELLOW,
+        )
+    elif stale:
         typer.secho(
             f'Lockfile is out of date; re-locking: {", ".join(stale)}',
             err=True,
@@ -129,6 +162,7 @@ def _root(
     ] = None,
 ) -> None:
     """UV Toolbox CLI."""
+    warnings.showwarning = _show_warning  # ty: ignore[invalid-assignment]
     ctx.obj = _filter_nulls({'config_file': config_file})
 
 
@@ -184,7 +218,7 @@ def install(
 
 
 @app.command(name='lock')
-def lock(
+def lock(  # noqa: PLR0913
     ctx: typer.Context,
     venv_path: Annotated[
         Path | None,
@@ -206,25 +240,46 @@ def lock(
         bool,
         typer.Option(
             '--refresh',
-            help='Forward --refresh to `uv pip compile` to bypass cached package metadata.',
+            help='Forward --refresh to `uv lock` to bypass cached package metadata.',
         ),
     ] = False,
     upgrade: Annotated[
         bool,
         typer.Option(
             '--upgrade',
-            help='Forward --upgrade to `uv pip compile` to re-resolve every pin to its latest compatible version.',
+            help='Forward --upgrade to `uv lock` to re-resolve every package to its latest compatible version.',
         ),
     ] = False,
+    upgrade_packages: Annotated[
+        list[str] | None,
+        typer.Option(
+            '--upgrade-package',
+            '-P',
+            help='Forward --upgrade-package to `uv lock` to re-resolve only this package. Repeatable.',
+        ),
+    ] = None,
 ) -> None:
-    """Generate, update, or verify pinned, hash-verified requirements."""
+    """Generate, update, or verify the repo lockfile.
+
+    Existing pins are kept wherever they still satisfy the configuration; use
+    --upgrade or --upgrade-package to move them.
+    """
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     lockfile_path = _require_lockfile_path(settings, check=check)
     try:
         if check:
-            _check_lockfile(settings, lockfile_path, refresh=refresh, upgrade=upgrade)
+            if upgrade or upgrade_packages:
+                typer.secho('--check cannot be combined with --upgrade.', err=True, fg=typer.colors.RED)
+                raise typer.Exit(code=1)
+            _check_lockfile(settings, lockfile_path)
         else:
-            _write_lockfile(settings, lockfile_path, refresh=refresh, upgrade=upgrade)
+            _write_lockfile(
+                settings,
+                lockfile_path,
+                upgrade=upgrade,
+                upgrade_packages=upgrade_packages,
+                refresh=refresh,
+            )
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
@@ -335,6 +390,56 @@ def shim(
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
+
+
+@app.command(name='migrate-config')
+def migrate_config_command(
+    ctx: typer.Context,
+    *,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            '--yes',
+            '-y',
+            help='Write the converted config without asking for confirmation.',
+        ),
+    ] = False,
+) -> None:
+    """Convert deprecated requirements / requirements_file environments to dependencies."""
+    try:
+        settings = UvToolboxSettings.from_context(ctx)
+        migration = migrate_config(settings)
+    except UvToolboxError as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
+    config_file = settings.config_file
+    if not migration.migrated or config_file is None:
+        typer.echo('No environments use requirements or requirements_file; nothing to migrate.')
+        return
+    if not migration.rewritable:
+        typer.echo(
+            f'{config_file} cannot be rewritten automatically. Replace the '
+            f'[[tool.uv-toolbox.environments]] tables for {", ".join(migration.migrated)} with:\n',
+        )
+        typer.echo(migration.content)
+        return
+    original = config_file.read_text()
+    diff = difflib.unified_diff(
+        original.splitlines(keepends=True),
+        migration.content.splitlines(keepends=True),
+        fromfile=str(config_file),
+        tofile=str(config_file),
+    )
+    typer.echo(''.join(diff))
+    typer.secho(
+        'Comments and formatting in the config file are not preserved.',
+        err=True,
+        fg=typer.colors.YELLOW,
+    )
+    if not yes and not typer.confirm(f'Write {config_file}?'):
+        raise typer.Exit(code=1)
+    config_file.write_text(migration.content)
+    typer.echo(f'Migrated {", ".join(migration.migrated)} in {config_file}. Run `uv-toolbox lock` to re-lock.')
 
 
 def main() -> None:

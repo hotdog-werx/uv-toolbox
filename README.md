@@ -15,14 +15,19 @@ Here is an example in YAML format:
 ```yaml
 environments:
   - name: env1
-    requirements: |
-      ruff==0.13.0
-      black
+    dependencies: [ruff==0.13.0, black]
   - name: env2
-    requirements: |
-      isort
-      flake8
+    dependencies: [isort, flake8]
+    sources:
+      flake8:
+        git: https://github.com/PyCQA/flake8.git
+        tag: 7.3.0
 ```
+
+Each environment is a small uv project: `dependencies`, `sources`,
+`requires_python` and a `uv` passthrough for `[tool.uv]` settings work as they
+do in a `pyproject.toml`, and locking uses `uv lock`. See the
+[configuration docs](docs/configuration.md).
 
 ### Configuration Options
 
@@ -31,8 +36,8 @@ environments:
 By default, virtual environments are stored in `~/.cache/uv-toolbox/` using
 **content-addressed storage**. This means:
 
-- **Automatic deduplication**: Identical requirements across projects share the
-  same venv
+- **Automatic deduplication**: Identically locked environments across projects
+  share the same venv
 - **No naming conflicts**: Venvs are organized by content hash, not names
 - **Works from subdirectories**: Run commands from anywhere in your project
 
@@ -41,9 +46,9 @@ By default, virtual environments are stored in `~/.cache/uv-toolbox/` using
 # (no venv_path needed - defaults to ~/.cache/uv-toolbox)
 environments:
   - name: formatting
-    requirements: ruff==0.13.0
+    dependencies: [ruff==0.13.0]
   - name: testing
-    requirements: pytest==8.0.0
+    dependencies: [pytest==8.0.0]
 
 # Optional: local storage (per-project)
 venv_path: .uv-toolbox
@@ -51,26 +56,25 @@ venv_path: .uv-toolbox
 
 **How it works:**
 
-- Each environment's venv location is determined by hashing its requirements
-- Projects with identical requirements automatically share the same venv
+- Each environment's venv location is determined by hashing its locked packages
+- Projects with identically locked environments automatically share the same
+  venv
 - Config files are discovered by walking up the directory tree
 
 **Executables:**
 
-By default, shims expose the `console_scripts` declared by first-order
-requirements. Scripts belonging only to transitive dependencies are excluded.
+By default, shims expose the `console_scripts` declared by the packages in
+`dependencies`. Scripts belonging only to transitive dependencies are excluded.
 Use `omit_executables` to hide selected scripts, or `executables_override` for
 an exact allowlist:
 
 ```yaml
 environments:
   - name: formatting
-    requirements: |
-      ruff==0.13.0
-      black
+    dependencies: [ruff==0.13.0, black]
     omit_executables: [black]
   - name: no-shims
-    requirements: pytest
+    dependencies: [pytest]
     executables_override: []
 ```
 
@@ -81,6 +85,10 @@ environments:
 The legacy `executables` key emits a deprecation warning and will be removed in
 uv-toolbox 1.0. Use `executables_override` instead.
 
+The `requirements` and `requirements_file` keys are deprecated in the same way.
+Run `uv-toolbox migrate-config` to convert them to `dependencies` and `sources`
+(see [migrating](docs/migrating.md)).
+
 ## Usage
 
 Install environments:
@@ -89,19 +97,17 @@ Install environments:
 uv-toolbox install
 ```
 
-After the first install, a pinned lockfile is written alongside each venv.
-Subsequent installs sync from it via uv's local cache — no network, no
-re-resolution. To upgrade to newer versions:
+Each environment is locked with `uv lock` and installed with `uv sync --frozen`.
+Later installs sync from the lock via uv's local cache, with no network and no
+re-resolution.
+
+Commit a repo lockfile, which embeds every environment's `uv.lock`:
 
 ```bash
-uv-toolbox install --upgrade   # re-resolve and refresh the lockfile
-```
-
-Generate a committed repo lockfile with hashes for all platform variants:
-
-```bash
-uv-toolbox lock   # writes uv-toolbox.lock next to your config file
-uv-toolbox lock --check  # verifies existing pins remain valid without upgrading
+uv-toolbox lock                         # writes uv-toolbox.lock, keeping existing pins
+uv-toolbox lock --upgrade               # re-resolve everything
+uv-toolbox lock --upgrade-package ruff  # re-resolve one package
+uv-toolbox lock --check                 # verify in CI, offline, without writing
 ```
 
 Run a command inside an environment (uses the configured default if set,
@@ -118,8 +124,8 @@ eval "$(uv-toolbox shim)"
 ```
 
 This creates wrapper scripts for the console scripts declared by each
-environment's first-order requirements. Transitive package scripts and the
-venv's Python/pip executables are not exposed.
+environment's `dependencies`. Transitive package scripts and the venv's
+Python/pip executables are not exposed.
 
 If you use [mise](https://mise.jdx.dev), the mise plugin handles PATH management
 automatically on every shell activation — see the

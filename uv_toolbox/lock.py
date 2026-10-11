@@ -1,125 +1,72 @@
 from __future__ import annotations
 
-import tempfile
 import typing
-from pathlib import Path
 
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
-from uv_toolbox.process import run_checked
+from uv_toolbox.project import check_environment, lock_environment
 
 if typing.TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Sequence
+
     from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
 
-def generate_environment_lock(
+def _lock_entry(  # noqa: PLR0913
     env: UvToolboxEnvironment,
     settings: UvToolboxSettings,
+    existing: EnvironmentLock | None,
     *,
-    existing_requirements: str | None = None,
-    refresh: bool = False,
     upgrade: bool = False,
-) -> str:
-    """Compile pinned, hash-verified requirements for one environment.
-
-    Runs `uv pip compile --generate-hashes --universal` to produce a
-    platform-agnostic requirements file with hashes for every wheel variant.
-    VIRTUAL_ENV is intentionally not set so resolution is not bound to any
-    specific venv's Python.
-
-    Args:
-        env: The environment to compile requirements for.
-        settings: UV toolbox settings (used for show_commands and requirement source).
-        existing_requirements: Previously locked requirements whose compatible
-            pins should be preserved during validation.
-        refresh: If True, forward `--refresh` to `uv pip compile` so cached
-            package metadata is ignored and the latest compatible versions
-            are considered.
-        upgrade: If True, forward `--upgrade` to `uv pip compile` so existing
-            pins (direct and transitive) are disregarded and every package is
-            re-resolved to its latest compatible version.
-
-    Returns:
-        The compiled requirements text (stripped, no trailing newline).
-    """
-    with tempfile.TemporaryDirectory() as temp_dir_raw:
-        temp_dir = Path(temp_dir_raw)
-        output_path = temp_dir / 'compiled-requirements.txt'
-        if existing_requirements is not None:
-            # uv treats an existing output file as the preferred set of pins.
-            # This lets `lock --check` validate compatibility without turning
-            # every newly published transitive dependency into lockfile drift.
-            output_path.write_text(existing_requirements)
-        if env.requirements_file is not None:
-            req_source = str(env.requirements_file)
-        else:
-            temp_req_file = temp_dir / f'requirements_{env.name}.txt'
-            # Always resolve the declared source. ``resolved_requirements``
-            # may contain content injected from an existing lockfile, which
-            # would prevent `lock` from refreshing stale dependencies.
-            if env.requirements is None:  # pragma: no cover
-                msg = 'requirements is None — model validation guarantees this is impossible'
-                raise RuntimeError(msg)
-            temp_req_file.write_text(env.requirements)
-            req_source = str(temp_req_file)
-
-        run_checked(
-            args=[
-                'uv',
-                'pip',
-                'compile',
-                '--generate-hashes',
-                '--universal',
-                '--no-header',
-                '--no-annotate',
-                *(['--refresh'] if refresh else []),
-                *(['--upgrade'] if upgrade else []),
-                '-o',
-                str(output_path),
-                req_source,
-            ],
-            capture_stdout=True,
-            capture_stderr=False,
-            extra_env={**env.configured_env(), 'VIRTUAL_ENV': None},
-            show_command=settings.show_commands,
-        )
-        return output_path.read_text().strip()
+    upgrade_packages: Sequence[str] = (),
+    refresh: bool = False,
+) -> EnvironmentLock:
+    """Lock one environment, starting from its existing entry if there is one."""
+    uv_lock = lock_environment(
+        env,
+        settings,
+        uv_lock=existing.uv_lock if existing is not None else None,
+        legacy_requirements=existing.legacy_requirements if existing is not None else None,
+        upgrade=upgrade,
+        upgrade_packages=upgrade_packages,
+        refresh=refresh,
+    )
+    return EnvironmentLock(uv_lock=uv_lock, fingerprint=env.lock_fingerprint())
 
 
 def generate_lock(
     settings: UvToolboxSettings,
     *,
     existing_lock: UvToolboxLock | None = None,
-    refresh: bool = False,
     upgrade: bool = False,
+    upgrade_packages: Sequence[str] = (),
+    refresh: bool = False,
 ) -> UvToolboxLock:
-    """Compile a lockfile for all configured environments.
+    """Lock every configured environment.
+
+    Existing pins are kept wherever they still satisfy the configuration, as
+    with `uv lock`; pass upgrade or upgrade_packages to move them.
 
     Args:
         settings: UV toolbox settings.
-        existing_lock: Existing lock whose compatible pins should be preserved.
-        refresh: If True, forward `--refresh` to `uv pip compile` for every
-            environment so the latest compatible versions are considered.
-        upgrade: If True, forward `--upgrade` to `uv pip compile` for every
-            environment so existing pins are disregarded and re-resolved to
-            their latest compatible version.
+        existing_lock: The current repo lockfile contents, if any.
+        upgrade: Re-resolve every package to its latest compatible version.
+        upgrade_packages: Re-resolve only these packages (and whatever they
+            require).
+        refresh: Bypass cached package metadata.
 
     Returns:
-        A UvToolboxLock containing compiled, hash-bearing requirements for
-        every environment.
+        A UvToolboxLock covering exactly the configured environments.
     """
     lock = UvToolboxLock()
     for env in settings.environments:
-        existing_environment = existing_lock.environments.get(env.name) if existing_lock is not None else None
-        compiled = generate_environment_lock(
-            env=env,
-            settings=settings,
-            existing_requirements=(existing_environment.requirements if existing_environment is not None else None),
-            refresh=refresh,
+        existing = existing_lock.environments.get(env.name) if existing_lock is not None else None
+        lock.environments[env.name] = _lock_entry(
+            env,
+            settings,
+            existing,
             upgrade=upgrade,
-        )
-        lock.environments[env.name] = EnvironmentLock(
-            requirements=compiled,
-            fingerprint=env.lock_fingerprint(),
+            upgrade_packages=upgrade_packages,
+            refresh=refresh,
         )
     return lock
 
@@ -130,9 +77,9 @@ def stale_environments(
 ) -> list[str]:
     """Return names of environments whose lock entry no longer matches the config.
 
-    An entry is stale when it is missing or its fingerprint differs from the
-    environment's current inputs. Entries without a fingerprint (written by
-    older versions) are always stale.
+    An entry is stale when it is missing, has no uv.lock content (it was
+    written in the version 1 format), or its fingerprint differs from the
+    environment's current inputs.
 
     Args:
         settings: UV toolbox settings.
@@ -144,7 +91,7 @@ def stale_environments(
     stale = []
     for env in settings.environments:
         env_lock = lock.environments.get(env.name)
-        if env_lock is None or env_lock.fingerprint != env.lock_fingerprint():
+        if env_lock is None or env_lock.uv_lock is None or env_lock.fingerprint != env.lock_fingerprint():
             stale.append(env.name)
     return stale
 
@@ -156,8 +103,8 @@ def update_lock(
 ) -> UvToolboxLock:
     """Re-lock stale environments, keeping up-to-date entries untouched.
 
-    Stale environments are resolved with their existing pins as preferences,
-    so only the packages affected by the config change move. Entries for
+    Stale environments are locked starting from their existing uv.lock, so
+    only the packages affected by the config change move. Entries for
     environments no longer in the config are dropped.
 
     Args:
@@ -170,17 +117,38 @@ def update_lock(
     """
     lock = UvToolboxLock()
     for env in settings.environments:
-        existing_environment = existing_lock.environments.get(env.name)
-        if existing_environment is not None and env.name not in stale:
-            lock.environments[env.name] = existing_environment
+        existing = existing_lock.environments.get(env.name)
+        if existing is not None and env.name not in stale:
+            lock.environments[env.name] = existing
             continue
-        compiled = generate_environment_lock(
-            env=env,
-            settings=settings,
-            existing_requirements=(existing_environment.requirements if existing_environment is not None else None),
-        )
-        lock.environments[env.name] = EnvironmentLock(
-            requirements=compiled,
-            fingerprint=env.lock_fingerprint(),
-        )
+        lock.environments[env.name] = _lock_entry(env, settings, existing)
     return lock
+
+
+def check_lock(
+    settings: UvToolboxSettings,
+    lock: UvToolboxLock,
+) -> dict[str, str]:
+    """Run `uv lock --check` for every environment in an up-to-date lock.
+
+    Args:
+        settings: UV toolbox settings.
+        lock: The repo lockfile contents; every configured environment must
+            have uv.lock content (see `stale_environments`).
+
+    Returns:
+        uv's explanation for each environment whose lock is out of date.
+
+    Raises:
+        ValueError: If an environment has no uv.lock content.
+    """
+    failures = {}
+    for env in settings.environments:
+        uv_lock = lock.environments[env.name].uv_lock
+        if uv_lock is None:  # pragma: no cover - callers check staleness first
+            msg = f'Environment {env.name!r} has no uv.lock content.'
+            raise ValueError(msg)
+        problem = check_environment(env, settings, uv_lock=uv_lock)
+        if problem is not None:
+            failures[env.name] = problem
+    return failures

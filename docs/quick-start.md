@@ -17,14 +17,16 @@ Create a `uv-toolbox.yaml` file in your project:
 ```yaml
 environments:
   - name: formatting
-    requirements: |
-      ruff==0.13.0
-      black
+    dependencies:
+      - ruff==0.13.0
+      - black
   - name: testing
-    requirements: |
-      pytest
-      pytest-cov
+    dependencies: [pytest, pytest-cov]
 ```
+
+`dependencies` takes PEP 508 requirement strings, exactly like a
+`pyproject.toml`. Packages that aren't on PyPI go in `sources`; see
+[Configuration](configuration.md).
 
 ## Usage
 
@@ -34,12 +36,12 @@ environments:
 uv-toolbox install
 ```
 
-This creates virtual environments for each defined environment. By default,
-venvs are stored in `~/.cache/uv-toolbox/` using content-addressed storage.
+This locks each environment with uv and installs it into its own virtual
+environment. By default, venvs are stored in `~/.cache/uv-toolbox/` using
+content-addressed storage.
 
-After the first install, a pinned machine lockfile is written alongside each
-venv. Subsequent installs sync from it using uv's local package cache — no
-network required.
+The lock is kept next to each venv, so later installs sync from it using uv's
+local package cache without resolving again or touching the network.
 
 To re-resolve and pick up newer versions:
 
@@ -61,9 +63,7 @@ Or set a default environment in your config:
 default_environment: formatting
 environments:
   - name: formatting
-    requirements: |
-      ruff
-      black
+    dependencies: [ruff, black]
 ```
 
 Then run without `--env`:
@@ -74,16 +74,15 @@ uv-toolbox exec -- ruff check .
 
 ### Add to PATH
 
-First-order requirements automatically expose their declared console scripts:
+The packages listed in `dependencies` automatically expose their declared
+console scripts:
 
 ```yaml
 environments:
   - name: formatting
-    requirements: |
-      ruff==0.13.0
-      black
+    dependencies: [ruff==0.13.0, black]
   - name: testing
-    requirements: pytest
+    dependencies: [pytest]
 ```
 
 Add their shims to your PATH:
@@ -100,8 +99,8 @@ black .
 pytest
 ```
 
-Only scripts declared by first-order packages are added. Scripts from transitive
-dependencies and the venv's Python/pip executables are excluded.
+Only scripts declared by the packages in `dependencies` are added. Scripts from
+transitive dependencies and the venv's Python/pip executables are excluded.
 
 **Tip**: If you use [mise](https://mise.jdx.dev), the [mise plugin](mise.md)
 handles this automatically on every shell activation — no `eval` needed.
@@ -111,36 +110,28 @@ handles this automatically on every shell activation — no `eval` needed.
 ### Virtual Environment Location
 
 By default, venvs are stored in `~/.cache/uv-toolbox/` using
-[content-addressed storage](content-addressing.md):
-
-```yaml
-# Default - no venv_path needed
-environments:
-  - name: dev
-    requirements: |
-      ruff
-      pytest
-```
-
-For project-local storage:
+[content-addressed storage](content-addressing.md). For project-local storage:
 
 ```yaml
 venv_path: .uv-toolbox # Relative to config file
 environments:
   - name: dev
-    requirements: |
-      ruff
-      pytest
+    dependencies: [ruff, pytest]
 ```
 
-### Requirements Files
-
-Use a requirements file instead of inline requirements:
+### Git and local sources
 
 ```yaml
 environments:
-  - name: dev
-    requirements_file: requirements-dev.txt
+  - name: tools
+    dependencies: [my-tool, my-plugin]
+    sources:
+      my-tool:
+        git: https://github.com/example/my-tool.git
+        tag: v1.2.0
+      my-plugin:
+        path: plugins/my-plugin # relative to the config file
+        editable: true
 ```
 
 ### Environment Variables
@@ -150,58 +141,53 @@ Set environment variables for specific environments:
 ```yaml
 environments:
   - name: testing
-    requirements: pytest
+    dependencies: [pytest]
     environment:
       PYTEST_ADDOPTS: '-v --tb=short'
 ```
 
 ### Executables
 
-First-order package scripts are exposed automatically. Use `omit_executables` to
-remove selected scripts:
+Use `omit_executables` to hide some automatically exposed scripts, or
+`executables_override` for an exact list (`[]` disables shims):
 
 ```yaml
 environments:
   - name: formatting
-    requirements: |
-      ruff==0.13.0
-      black
+    dependencies: [ruff==0.13.0, black]
     omit_executables: [black]
-```
-
-Use `executables_override` when you need an exact list. An empty list disables
-all shims for that environment:
-
-```yaml
-environments:
   - name: testing
-    requirements: pytest
+    dependencies: [pytest]
     executables_override: []
 ```
 
-The legacy `executables` key is accepted as an alias for `executables_override`,
-but emits a deprecation warning and will be removed in uv-toolbox 1.0.
+See [Configuration](configuration.md) for everything else, including
+`requires_python` and the `uv` settings passthrough.
 
 ### Generate a repo lockfile
 
-For reproducible installs across the team, generate a committed lockfile with
-pinned versions and hashes for all platform variants:
+For reproducible installs across the team, commit a lockfile:
 
 ```bash
-uv-toolbox lock
-uv-toolbox lock --check
+uv-toolbox lock          # write uv-toolbox.lock
+uv-toolbox lock --check  # verify it in CI, without writing
 ```
 
-The first command writes `uv-toolbox.lock`; the second is the non-writing CI
-check. It preserves compatible committed pins rather than treating newly
-published transitive versions as drift. Commit the lockfile so `uvtb install`
-uses the pre-resolved, hash-verified requirements automatically.
+`uv-toolbox.lock` embeds the `uv.lock` of every environment. `uvtb install`
+installs exactly what it lists, and `uvtb lock` keeps existing pins until you
+pass `--upgrade` or `--upgrade-package`. See [Locking](locking.md) for the full
+workflow.
 
-See [Locking](locking.md) for the full workflow.
+### Coming from `requirements`?
+
+Environments declared with `requirements` or `requirements_file` still work, but
+those keys are deprecated. `uvtb migrate-config` converts them; see
+[Migrating](migrating.md).
 
 ## Next Steps
 
-- Learn about [locking](locking.md) — offline installs, team lockfiles, and
+- Read the full [configuration reference](configuration.md)
+- Learn about [locking](locking.md): offline installs, team lockfiles, and
   upgrades
 - Set up the [mise plugin](mise.md) for automatic PATH management
 - Learn about [content-addressed storage](content-addressing.md)

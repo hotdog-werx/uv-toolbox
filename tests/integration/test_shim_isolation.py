@@ -34,8 +34,7 @@ def test_integration_shim_runs_in_correct_venv(
         venv_path: .uv-toolbox
         environments:
           - name: tools
-            requirements: |
-              ruff
+            dependencies: [ruff]
             executables_override: [python]
     """).strip()
         + '\n',

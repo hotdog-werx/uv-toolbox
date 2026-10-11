@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tomllib
 import typing
 import warnings
@@ -10,6 +11,8 @@ from contextlib import contextmanager
 from os.path import expandvars
 from pathlib import Path
 
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import (
     AliasChoices,
     AliasGenerator,
@@ -17,6 +20,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PrivateAttr,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import (
@@ -64,24 +68,87 @@ _ALIASES = AliasGenerator(
     serialization_alias=_to_kebab,
 )
 
-# Bump when machine-lock or environment materialization semantics change.
-# Including this in the CAS hash prevents older, structurally incomplete
-# machine locks from being reused forever after an upgrade.
-_CACHE_FORMAT_VERSION = 2
+# Bump when environment materialization semantics change. Including this in
+# the CAS hash moves environments to fresh venvs after an upgrade.
+_CACHE_FORMAT_VERSION = 3
 
 # Bump when the inputs covered by UvToolboxEnvironment.lock_fingerprint
 # change, so existing repo lockfiles are re-locked automatically.
-_LOCK_FINGERPRINT_VERSION = 1
+_LOCK_FINGERPRINT_VERSION = 2
+
+# `[tool.uv]` keys that uv-toolbox sets itself and so may not be passed through.
+_MANAGED_UV_KEYS = {
+    'package': 'uv-toolbox always generates a non-package project (package = false).',
+    'sources': "use the environment's top-level 'sources' key instead.",
+}
+
+_DEPRECATED_REQUIREMENT_KEYS = ('requirements', 'requirements_file', 'requirements-file')
 
 
-class UvToolboxEnvironment(BaseModel):
+class UvSource(BaseModel):
+    """One entry of an environment's `sources` table, as in `[tool.uv.sources]`.
+
+    Exactly one of `git`, `path`, `url` or `index` must be set. Relative
+    `path` values are resolved against the directory of the config file.
+    """
+
+    git: str | None = None
+    tag: str | None = None
+    branch: str | None = None
+    rev: str | None = None
+    subdirectory: str | None = None
+    path: str | None = None
+    url: str | None = None
+    index: str | None = None
+    editable: bool | None = None
+    package: bool | None = None
+    marker: str | None = None
+    extra: str | None = None
+    group: str | None = None
+
+    model_config = ConfigDict(extra='forbid')
+
+    @model_validator(mode='after')
+    def check_kind(self) -> UvSource:
+        """Validate that the source names exactly one location."""
+        kinds = [kind for kind in ('git', 'path', 'url', 'index') if getattr(self, kind) is not None]
+        if len(kinds) != 1:
+            msg = 'A source must set exactly one of git, path, url or index.'
+            raise ValueError(msg)
+        refs = [ref for ref in ('tag', 'branch', 'rev') if getattr(self, ref) is not None]
+        if refs and self.git is None:
+            msg = f'{refs[0]!r} is only valid for git sources.'
+            raise ValueError(msg)
+        if len(refs) > 1:
+            msg = 'A git source may set only one of tag, branch or rev.'
+            raise ValueError(msg)
+        return self
+
+    def to_toml_data(self) -> dict[str, object]:
+        """Return the source as `[tool.uv.sources]` data, omitting unset keys."""
+        return self.model_dump(exclude_none=True)
+
+
+class UvToolboxEnvironment(BaseModel, alias_generator=_ALIASES, populate_by_name=True):
     """Definition of a UV toolbox environment.
 
     Attributes:
-        requirements: A pip requirements string (mutually exclusive with
-            requirements_file).
-        requirements_file: A path to a pip requirements file (mutually
-            exclusive with requirements).
+        name: The environment's name, used to select it on the command line.
+        dependencies: PEP 508 requirement strings, as in a pyproject's
+            `[project] dependencies`.
+        sources: Where to fetch named dependencies from, as in
+            `[tool.uv.sources]`.
+        requires_python: The Python versions the environment is locked for.
+            Defaults to the previously locked value, or to the version of the
+            interpreter uv finds.
+        uv: Settings copied verbatim into the generated project's `[tool.uv]`
+            table.
+        requirements: Deprecated. A pip requirements string (mutually
+            exclusive with dependencies and requirements_file).
+        requirements_file: Deprecated. A path to a pip requirements file
+            (mutually exclusive with dependencies and requirements).
+        environment: Environment variables for uv commands, `exec` and shims.
+            `$VAR` references are expanded when used.
         executables_override: Exact executable names to expose instead of
             discovering scripts from first-order requirements. An empty list
             exposes no executables.
@@ -89,6 +156,10 @@ class UvToolboxEnvironment(BaseModel):
     """
 
     name: str
+    dependencies: list[str] | None = None
+    sources: dict[str, UvSource | list[UvSource]] = Field(default_factory=dict)
+    requires_python: str | None = None
+    uv: dict[str, typing.Any] = Field(default_factory=dict)
     requirements: str | None = None
     requirements_file: Path | None = None
     environment: dict[str, str] = Field(default_factory=dict)
@@ -103,14 +174,9 @@ class UvToolboxEnvironment(BaseModel):
     omit_executables: list[str] = Field(default_factory=list)
 
     # Injected at settings load time from the repo lockfile; not part of the
-    # config schema. When set, _get_requirements_hash uses this content instead
-    # of the raw requirements so the CAS address changes after uvtb lock.
-    _resolved_requirements: str | None = PrivateAttr(default=None)
-
-    model_config = ConfigDict(
-        alias_generator=_ALIASES,
-        populate_by_name=True,
-    )
+    # config schema. When set, _get_requirements_hash derives the CAS address
+    # from the locked packages instead of the declared inputs.
+    _locked_uv_lock: str | None = PrivateAttr(default=None)
 
     @model_validator(mode='before')
     @classmethod
@@ -125,13 +191,76 @@ class UvToolboxEnvironment(BaseModel):
             )
         return data
 
+    @model_validator(mode='before')
+    @classmethod
+    def warn_about_requirements(cls, data: object) -> object:
+        """Warn when the deprecated requirements keys are used."""
+        if isinstance(data, dict) and any(data.get(key) for key in _DEPRECATED_REQUIREMENT_KEYS):
+            warnings.warn(
+                f'Environment {data.get("name")!r}: the requirements and '
+                'requirements_file configuration keys are deprecated and will be '
+                "removed in uv-toolbox 1.0; use 'dependencies' and 'sources' "
+                'instead. Run `uvtb migrate-config` to convert your config.',
+                FutureWarning,
+                stacklevel=2,
+            )
+        return data
+
+    @field_validator('dependencies')
+    @classmethod
+    def check_dependencies(cls, value: list[str] | None) -> list[str] | None:
+        """Validate that every dependency is a PEP 508 requirement."""
+        for dependency in value or []:
+            try:
+                Requirement(dependency)
+            except InvalidRequirement as exc:
+                msg = f'Invalid dependency {dependency!r}: {exc}'
+                raise ValueError(msg) from exc
+        return value
+
+    @field_validator('requires_python')
+    @classmethod
+    def check_requires_python(cls, value: str | None) -> str | None:
+        """Validate that requires_python is a version specifier."""
+        if value is not None:
+            try:
+                SpecifierSet(value)
+            except InvalidSpecifier as exc:
+                msg = f'Invalid requires_python {value!r}: {exc}'
+                raise ValueError(msg) from exc
+        return value
+
+    @field_validator('uv')
+    @classmethod
+    def check_uv_passthrough(cls, value: dict[str, typing.Any]) -> dict[str, typing.Any]:
+        """Reject `[tool.uv]` keys that uv-toolbox manages itself."""
+        for key, reason in _MANAGED_UV_KEYS.items():
+            if key in value:
+                msg = f'The {key!r} key cannot be set in the uv passthrough: {reason}'
+                raise ValueError(msg)
+        return value
+
     @model_validator(mode='after')
     def check_requirements(self) -> UvToolboxEnvironment:
-        """Validate that only one of requirements or requirements_file is set."""
-        if not (bool(self.requirements) ^ bool(self.requirements_file)):
-            msg = 'Exactly one of requirements or requirements_file must be set.'
+        """Validate that exactly one way of declaring dependencies is used."""
+        declared = [self.dependencies is not None, bool(self.requirements), bool(self.requirements_file)]
+        if sum(declared) != 1:
+            msg = 'Exactly one of dependencies, requirements or requirements_file must be set.'
+            raise ValueError(msg)
+        if self.sources and self.dependencies is None:
+            msg = 'sources can only be used with dependencies, not with requirements or requirements_file.'
             raise ValueError(msg)
         return self
+
+    @property
+    def uses_deprecated_requirements(self) -> bool:
+        """Whether dependencies are declared with requirements or requirements_file."""
+        return self.dependencies is None
+
+    @property
+    def locked_uv_lock(self) -> str | None:
+        """The environment's uv.lock content from the repo lockfile, if any."""
+        return self._locked_uv_lock
 
     @staticmethod
     def _normalize_requirements(req: str) -> str:
@@ -147,54 +276,58 @@ class UvToolboxEnvironment(BaseModel):
         # Sort for consistency
         return '\n'.join(sorted(lines))
 
-    @staticmethod
-    def _normalize_resolved_requirements(req: str) -> str:
-        """Normalize resolved requirements for consistent hashing.
+    def requirements_text(self) -> str:
+        """Return the deprecated requirements content (inline or from the file)."""
+        if self.requirements_file is not None:
+            return self.requirements_file.read_text()
+        return self.requirements or ''
 
-        - Removes comment lines and blank lines
-        - Does NOT sort: sorting would break --hash= continuation lines
-        """
-        return '\n'.join(line for line in req.splitlines() if line.strip() and not line.strip().startswith('#'))
+    def _declared_inputs(self) -> dict[str, object]:
+        """Return the configured inputs that determine what gets resolved."""
+        inputs: dict[str, object] = {
+            'requires_python': self.requires_python,
+            'uv': self.uv,
+        }
+        if self.dependencies is not None:
+            inputs['dependencies'] = self.dependencies
+            inputs['sources'] = self.sources_data()
+        else:
+            inputs['requirements'] = self._normalize_requirements(self.requirements_text())
+        return inputs
+
+    def sources_data(self) -> dict[str, object]:
+        """Return `sources` as `[tool.uv.sources]` data, paths as configured."""
+        return {
+            name: [entry.to_toml_data() for entry in source] if isinstance(source, list) else source.to_toml_data()
+            for name, source in self.sources.items()
+        }
 
     def _get_requirements_hash(self) -> str:
-        """Generate a hash of the environment's requirements.
+        """Generate the content address of the environment's venv.
 
-        When _resolved_requirements is set (injected from the repo lockfile),
-        hashes the resolved content so the CAS address reflects the locked
-        packages rather than the raw requirements spec.
+        When _locked_uv_lock is set (injected from the repo lockfile), hashes
+        the locked packages so the CAS address reflects what gets installed
+        rather than the declared inputs.
 
         Returns a 12-character hex string.
         """
-        if self._resolved_requirements is not None:
-            normalized = self._normalize_resolved_requirements(
-                self._resolved_requirements,
-            )
-            cache_input = f'v{_CACHE_FORMAT_VERSION}\n{normalized}'
-            return hashlib.sha256(cache_input.encode()).hexdigest()[:12]
-
+        if self._locked_uv_lock is not None:
+            content = locked_packages_digest(self._locked_uv_lock)
+        else:
+            content = json.dumps(self._declared_inputs(), sort_keys=True, default=str)
         # Use SHA-256 for hashing (truncated to 12 chars for readability)
-        cache_input = f'v{_CACHE_FORMAT_VERSION}\n{self._normalized_declared_requirements()}'
+        cache_input = f'v{_CACHE_FORMAT_VERSION}\n{content}'
         return hashlib.sha256(cache_input.encode()).hexdigest()[:12]
-
-    def _normalized_declared_requirements(self) -> str:
-        """Return the normalized requirements declared in the config."""
-        if self.requirements:
-            return self._normalize_requirements(self.requirements)
-        # Read and normalize requirements file
-        if self.requirements_file is None:  # pragma: no cover
-            # Impossible: check_requirements validator ensures one is set
-            msg = 'Either requirements or requirements_file must be set'
-            raise ValueError(msg)  # pragma: no cover
-        return self._normalize_requirements(self.requirements_file.read_text())
 
     def lock_fingerprint(self) -> str:
         """Return a digest of the inputs that determine this environment's lock.
 
-        Covers the normalized declared requirements and the unexpanded
-        configured environment variables (which may point uv at other
-        indexes). Unexpanded values keep the fingerprint stable across
-        machines. A repo lockfile entry whose fingerprint differs was
-        resolved from different inputs and must be re-locked.
+        Covers the declared dependencies and sources (or the normalized
+        deprecated requirements), requires_python, the uv passthrough and the
+        unexpanded configured environment variables (which may point uv at
+        other indexes). Unexpanded values keep the fingerprint stable across
+        machines. A repo lockfile entry whose fingerprint differs was locked
+        from different inputs and must be re-locked.
 
         Returns:
             A ``sha256:``-prefixed hex digest.
@@ -202,35 +335,20 @@ class UvToolboxEnvironment(BaseModel):
         payload = json.dumps(
             {
                 'version': _LOCK_FINGERPRINT_VERSION,
-                'requirements': self._normalized_declared_requirements(),
+                **self._declared_inputs(),
                 'environment': self.environment,
             },
             sort_keys=True,
+            default=str,
         )
         return f'sha256:{hashlib.sha256(payload.encode()).hexdigest()}'
-
-    @property
-    def resolved_requirements(self) -> str:
-        """Return the effective requirements for installation.
-
-        Returns pre-compiled requirements from the repo lockfile when available,
-        otherwise falls back to inline requirements. The model validator guarantees
-        exactly one of requirements or requirements_file is set, so requirements is
-        non-None here when requirements_file is None.
-        """
-        if self._resolved_requirements is not None:
-            return self._resolved_requirements
-        if self.requirements is None:  # pragma: no cover
-            msg = 'requirements is None — model validator guarantees this is impossible'
-            raise RuntimeError(msg)
-        return self.requirements
 
     def venv_path(self, settings: UvToolboxSettings) -> Path:
         """Get the path to the virtual environment for this environment.
 
         Uses content-based addressing: the venv location is determined by
-        hashing the normalized requirements, ensuring identical requirements
-        share the same venv across projects.
+        hashing the locked packages (or the declared inputs when there is no
+        repo lockfile), so identical environments share a venv across projects.
         """
         req_hash = self._get_requirements_hash()
         return settings.resolved_venv_path / req_hash
@@ -245,6 +363,31 @@ class UvToolboxEnvironment(BaseModel):
             **self.configured_env(),
             'VIRTUAL_ENV': str(self.venv_path(settings=settings)),
         }
+
+
+def locked_packages_digest(uv_lock: str) -> str:
+    """Return a stable description of the packages a uv.lock installs.
+
+    Only each package's name, version and source are included, so changes to
+    uv's lock format or revision do not move environments to new venvs. The
+    generated project itself (a virtual source) is excluded.
+
+    Args:
+        uv_lock: uv.lock content.
+
+    Returns:
+        A canonical JSON string listing the locked packages.
+    """
+    packages = tomllib.loads(uv_lock).get('package', [])
+    entries = sorted(
+        (
+            [package.get('name'), package.get('version'), package.get('source', {})]
+            for package in packages
+            if 'virtual' not in package.get('source', {})
+        ),
+        key=lambda entry: json.dumps(entry, sort_keys=True),
+    )
+    return json.dumps(entries, sort_keys=True)
 
 
 class UvToolboxSettings(BaseSettings):
@@ -284,6 +427,21 @@ class UvToolboxSettings(BaseSettings):
         if self.config_file is None:
             return None
         return self.config_file.parent / 'uv-toolbox.lock'
+
+    @property
+    def config_dir(self) -> Path:
+        """Directory that relative config paths are resolved against."""
+        if self.config_file is None:
+            return Path.cwd()
+        return self.config_file.parent.absolute()
+
+    def project_dir(self, env: UvToolboxEnvironment) -> Path:
+        """Working directory holding the uv project generated for an environment.
+
+        It lives at a fixed location next to the config file so that relative
+        local paths recorded in uv.lock are the same on every machine.
+        """
+        return self.config_dir / '.uv-toolbox' / 'projects' / _safe_dir_name(env.name)
 
     @property
     def resolved_venv_path(self) -> Path:
@@ -350,14 +508,24 @@ class UvToolboxSettings(BaseSettings):
         return self
 
     @model_validator(mode='after')
-    def inject_resolved_requirements(self) -> UvToolboxSettings:
-        """Inject resolved requirements from the repo lockfile into environments.
+    def resolve_requirements_files(self) -> UvToolboxSettings:
+        """Resolve relative requirements_file paths against the config file directory."""
+        if self.config_file is None:
+            return self
+        for env in self.environments:
+            if env.requirements_file is not None and not env.requirements_file.is_absolute():
+                env.requirements_file = self.config_dir / env.requirements_file
+        return self
+
+    @model_validator(mode='after')
+    def inject_locked_environments(self) -> UvToolboxSettings:
+        """Inject locked environments from the repo lockfile.
 
         When uv-toolbox.lock exists next to the config file, each environment's
-        _resolved_requirements private attribute is populated with the compiled,
-        hash-bearing requirements for that environment. This causes venv_path()
-        to return a CAS address derived from the locked content, ensuring that
-        running uvtb lock followed by uvtb install always uses a fresh venv.
+        _locked_uv_lock private attribute is populated with its uv.lock content.
+        This causes venv_path() to return a CAS address derived from the
+        locked packages, ensuring that running uvtb lock followed by uvtb
+        install always uses a fresh venv.
         """
         lockfile_path = self.lockfile_path
         if lockfile_path is None or not lockfile_path.exists():
@@ -367,7 +535,7 @@ class UvToolboxSettings(BaseSettings):
         return self
 
     def apply_lock(self, lock: UvToolboxLock) -> None:
-        """Point each environment at its resolved requirements in lock.
+        """Point each environment at its locked packages in lock.
 
         Entries are applied even when their fingerprint is stale so that
         read-only commands (such as ``shim``) keep using the existing venvs;
@@ -378,7 +546,7 @@ class UvToolboxSettings(BaseSettings):
         """
         for env in self.environments:
             env_lock = lock.environments.get(env.name)
-            env._resolved_requirements = env_lock.requirements if env_lock is not None else None
+            env._locked_uv_lock = env_lock.uv_lock if env_lock is not None else None
 
     @classmethod
     def from_context(
@@ -451,6 +619,11 @@ class UvToolboxSettings(BaseSettings):
             uv_toolbox_toml,
             pyproject_toml,
         )
+
+
+def _safe_dir_name(name: str) -> str:
+    """Return a filesystem-safe directory name for an environment name."""
+    return re.sub(r'[^A-Za-z0-9._-]', '_', name)
 
 
 def _config_file_source(

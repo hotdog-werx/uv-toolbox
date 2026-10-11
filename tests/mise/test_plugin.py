@@ -57,7 +57,7 @@ def _write_toolbox_config(project_dir: Path) -> Path:
         venv_path: {json.dumps(str(project_dir / '.uv-toolbox'))}
         environments:
           - name: plugin-test
-            requirements: mise-plugin-fixture
+            dependencies: [mise-plugin-fixture]
             executables_override: [mise-plugin-fixture]
         """).strip()
         + '\n',

@@ -22,7 +22,7 @@ def _write_config(path: Path, venv_path: str = '.uv-toolbox') -> None:
                 f'venv_path: {venv_path}',
                 'environments:',
                 '  - name: env1',
-                '    requirements: ruff',
+                '    dependencies: [ruff]',
                 '',
             ],
         ),
@@ -130,9 +130,9 @@ def test_content_hashing_deduplicates_identical_requirements(
 venv_path: .uv-toolbox
 environments:
   - name: env1
-    requirements: ruff
+    dependencies: [ruff]
   - name: env2
-    requirements: ruff
+    dependencies: [ruff]
 """,
     )
 
@@ -157,9 +157,9 @@ def test_content_hashing_differs_for_different_requirements(
 venv_path: .uv-toolbox
 environments:
   - name: env1
-    requirements: ruff
+    dependencies: [ruff]
   - name: env2
-    requirements: black
+    dependencies: [black]
 """,
     )
 
@@ -185,7 +185,7 @@ def test_pyproject_toml_discovery_from_subdirectory(
 venv_path = ".uv-toolbox"
 [[tool.uv-toolbox.environments]]
 name = "env1"
-requirements = "ruff"
+dependencies = ["ruff"]
 """,
     )
 
