@@ -14,7 +14,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from uv_toolbox.project import logical_requirement_lines
-from uv_toolbox.utils import _venv_bin_path
+from uv_toolbox.utils import _venv_bin_path, _venv_python
 
 if typing.TYPE_CHECKING:
     from collections.abc import Iterator
@@ -136,7 +136,7 @@ def _create_unix_shim(
         venv_path: Path to the virtual environment.
         environment: Configured environment variables to export.
     """
-    python_exe = venv_path / 'bin' / 'python'
+    python_exe = _venv_python(venv_path)
     environment_lines = ''.join(f'export {key}={shlex.quote(value)}\n' for key, value in environment.items())
     script = f"""#!/usr/bin/env bash
 {environment_lines}export VIRTUAL_ENV={shlex.quote(str(venv_path))}
@@ -165,7 +165,7 @@ def _create_windows_shim(
     """
     # Create .bat file
     bat_path = shim_path.with_suffix('.bat')
-    python_exe = venv_path / 'Scripts' / 'python.exe'
+    python_exe = _venv_python(venv_path)
     environment_lines = ''.join(f'set "{key}={value.replace("%", "%%")}"\n' for key, value in environment.items())
     script = f"""@echo off
 {environment_lines}set "VIRTUAL_ENV={venv_path}"

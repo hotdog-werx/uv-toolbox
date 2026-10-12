@@ -302,7 +302,21 @@ class UvToolboxEnvironment(BaseModel, alias_generator=_ALIASES, populate_by_name
             for name, source in self.sources.items()
         }
 
-    def _get_requirements_hash(self) -> str:
+    def _venv_inputs(self, settings: UvToolboxSettings) -> dict[str, object]:
+        """Return the declared inputs, made specific to this checkout where needed.
+
+        Relative local paths read the same in every clone or worktree but
+        point at different code, so they are made absolute. Environments
+        without local paths keep sharing a venv across projects.
+        """
+        inputs = self._declared_inputs()
+        if self.dependencies is not None:
+            inputs['sources'] = absolute_source_paths(self.sources_data(), base=settings.config_dir)
+        elif any(_is_local_requirement(line) for line in self.requirements_text().splitlines()):
+            inputs['config_dir'] = str(settings.config_dir)
+        return inputs
+
+    def _get_requirements_hash(self, settings: UvToolboxSettings) -> str:
         """Generate the content address of the environment's venv.
 
         When _locked_uv_lock is set (injected from the repo lockfile), hashes
@@ -312,9 +326,9 @@ class UvToolboxEnvironment(BaseModel, alias_generator=_ALIASES, populate_by_name
         Returns a 12-character hex string.
         """
         if self._locked_uv_lock is not None:
-            content = locked_packages_digest(self._locked_uv_lock)
+            content = locked_packages_digest(self._locked_uv_lock, project_dir=settings.project_dir(self))
         else:
-            content = json.dumps(self._declared_inputs(), sort_keys=True, default=str)
+            content = json.dumps(self._venv_inputs(settings), sort_keys=True, default=str)
         # Use SHA-256 for hashing (truncated to 12 chars for readability)
         cache_input = f'v{_CACHE_FORMAT_VERSION}\n{content}'
         return hashlib.sha256(cache_input.encode()).hexdigest()[:12]
@@ -349,8 +363,10 @@ class UvToolboxEnvironment(BaseModel, alias_generator=_ALIASES, populate_by_name
         Uses content-based addressing: the venv location is determined by
         hashing the locked packages (or the declared inputs when there is no
         repo lockfile), so identical environments share a venv across projects.
+        Local path sources are hashed by their absolute location, so separate
+        checkouts of the same project never share a venv built from one of them.
         """
-        req_hash = self._get_requirements_hash()
+        req_hash = self._get_requirements_hash(settings)
         return settings.resolved_venv_path / req_hash
 
     def configured_env(self) -> dict[str, str]:
@@ -365,7 +381,47 @@ class UvToolboxEnvironment(BaseModel, alias_generator=_ALIASES, populate_by_name
         }
 
 
-def locked_packages_digest(uv_lock: str) -> str:
+# uv.lock source kinds that refer to a local path, relative to the project.
+_LOCAL_LOCK_SOURCES = ('path', 'directory', 'editable')
+
+# Deprecated requirement lines that install from a local path.
+_LOCAL_REQUIREMENT = re.compile(r'^(-e\s|--editable[\s=]|\.|/|~|file:|[A-Za-z]:[\\/])|@\s*file:')
+
+
+def _is_local_requirement(line: str) -> bool:
+    """Whether a deprecated requirements line installs from a local path."""
+    return bool(_LOCAL_REQUIREMENT.search(line.strip()))
+
+
+def _absolute(path: str, base: Path) -> str:
+    """Return path made absolute against base, normalized but without resolving symlinks."""
+    return Path(os.path.normpath(base / path)).as_posix()
+
+
+def absolute_source_paths(sources: dict[str, typing.Any], *, base: Path) -> dict[str, typing.Any]:
+    """Return `[tool.uv.sources]` data with relative `path` values made absolute against base."""
+
+    def convert(source: dict[str, typing.Any]) -> dict[str, typing.Any]:
+        if 'path' not in source:
+            return source
+        return {**source, 'path': _absolute(source['path'], base)}
+
+    return {
+        name: [convert(entry) for entry in source] if isinstance(source, list) else convert(source)
+        for name, source in sources.items()
+    }
+
+
+def _absolute_lock_source(source: dict[str, str], project_dir: Path | None) -> dict[str, str]:
+    """Return a uv.lock source with local paths made absolute against project_dir."""
+    if project_dir is None:
+        return source
+    return {
+        kind: _absolute(value, project_dir) if kind in _LOCAL_LOCK_SOURCES else value for kind, value in source.items()
+    }
+
+
+def locked_packages_digest(uv_lock: str, *, project_dir: Path | None = None) -> str:
     """Return a stable description of the packages a uv.lock installs.
 
     Only each package's name, version and source are included, so changes to
@@ -374,19 +430,19 @@ def locked_packages_digest(uv_lock: str) -> str:
 
     Args:
         uv_lock: uv.lock content.
+        project_dir: The generated project the lock belongs to. When given,
+            local (path, directory and editable) sources are made absolute
+            against it, so checkouts in different places get different venvs.
 
     Returns:
         A canonical JSON string listing the locked packages.
     """
-    packages = tomllib.loads(uv_lock).get('package', [])
-    entries = sorted(
-        (
-            [package.get('name'), package.get('version'), package.get('source', {})]
-            for package in packages
-            if 'virtual' not in package.get('source', {})
-        ),
-        key=lambda entry: json.dumps(entry, sort_keys=True),
-    )
+    entries = [
+        [package.get('name'), package.get('version'), _absolute_lock_source(package.get('source', {}), project_dir)]
+        for package in tomllib.loads(uv_lock).get('package', [])
+        if 'virtual' not in package.get('source', {})
+    ]
+    entries.sort(key=lambda entry: json.dumps(entry, sort_keys=True))
     return json.dumps(entries, sort_keys=True)
 
 

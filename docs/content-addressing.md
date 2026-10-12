@@ -102,6 +102,19 @@ deprecated `requirements` / `requirements_file`, the requirements are normalized
 first (comments and blank lines removed, lines stripped and sorted), and a
 `requirements_file` is hashed by its contents, not its path.
 
+### Local paths
+
+A relative local path, such as `path: plugins/my-plugin` in `sources` or an
+editable package in the lock, reads the same in every clone or worktree of a
+project, but points at different code in each. So local paths are hashed by
+their **absolute** location: each checkout gets its own venv, and `uvtb exec` in
+one checkout never runs another checkout's code. For deprecated `requirements`,
+any local-path line (`-e ./plugin`, `./pkg`, `file:` URLs) adds the config
+file's directory to the hash.
+
+Environments without local paths are unaffected and keep sharing one venv across
+projects.
+
 The first install locks the environment and keeps that lock next to the venv
 (see [Locking](locking.md#machine-lock)).
 

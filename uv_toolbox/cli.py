@@ -14,7 +14,7 @@ from uv_toolbox.migrate import migrate_config
 from uv_toolbox.process import run_checked
 from uv_toolbox.settings import UvToolboxSettings
 from uv_toolbox.shims import create_shims
-from uv_toolbox.utils import _filter_nulls
+from uv_toolbox.utils import _filter_nulls, _venv_python
 from uv_toolbox.uv_helpers import initialize_virtualenv
 
 app = typer.Typer(help='CLI tool for managing UV tool environments.')
@@ -333,17 +333,19 @@ def exec_(
             env_name=env_name,
         )
 
-        if not env.venv_path(settings=settings).exists() or clear:
+        venv_path = env.venv_path(settings=settings)
+        if not venv_path.exists() or clear:
             initialize_virtualenv(
                 env=env,
                 settings=settings,
                 clear=clear,
             )
 
-        # Use uv run with --no-project to prevent automatic project detection
-        # VIRTUAL_ENV is set via extra_env to specify which venv to use
+        # --no-project prevents automatic project detection, and an explicit
+        # --python pins the toolbox venv's interpreter (as the shims do), so a
+        # .python-version, UV_PYTHON or another active venv can't redirect it.
         run_checked(
-            args=['uv', 'run', '--no-project', '--', *command],
+            args=['uv', 'run', '--no-project', '--python', str(_venv_python(venv_path)), '--', *command],
             capture_stdout=False,
             capture_stderr=False,
             extra_env=env.process_env(settings=settings),

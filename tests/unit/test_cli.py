@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,10 +15,9 @@ from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock, read_lockfile, write_lockfile
 from uv_toolbox.migrate import Migration
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
+from uv_toolbox.utils import _venv_python
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pytest_mock import MockerFixture
 
 runner = CliRunner()
@@ -93,10 +93,10 @@ def test_exec_runs_uv_command(mocker: MockerFixture, tmp_path: Path) -> None:
     init_mock.assert_called_once()
     run_mock.assert_called_once()
     args = run_mock.call_args.kwargs['args']
-    assert args == ['uv', 'run', '--no-project', '--', 'ruff', '--version']
-
     extra_env = run_mock.call_args.kwargs['extra_env']
     assert extra_env['VIRTUAL_ENV'].startswith(str(venv_root))
+    venv_python = str(_venv_python(Path(extra_env['VIRTUAL_ENV'])))
+    assert args == ['uv', 'run', '--no-project', '--python', venv_python, '--', 'ruff', '--version']
 
 
 def test_exec_requires_delimiter(mocker: MockerFixture, tmp_path: Path) -> None:

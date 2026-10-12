@@ -10,7 +10,13 @@ from uv_toolbox.errors import (
     MultipleEnvironmentsError,
 )
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock, write_lockfile
-from uv_toolbox.settings import UvSource, UvToolboxEnvironment, UvToolboxSettings, locked_packages_digest
+from uv_toolbox.settings import (
+    UvSource,
+    UvToolboxEnvironment,
+    UvToolboxSettings,
+    _is_local_requirement,
+    locked_packages_digest,
+)
 
 
 def _make_settings(
@@ -480,6 +486,100 @@ def test_identical_locks_share_a_venv(tmp_path: Path) -> None:
     settings = _make_settings(venv_path=tmp_path, envs=[{'name': 'a', 'dependencies': ['ruff']}])
 
     assert first.venv_path(settings) == second.venv_path(settings)
+
+
+def _checkout(root: Path, env: dict[str, object], uv_lock: str | None = None) -> Path:
+    """Return the venv path an environment gets in a checkout at root (shared venv root)."""
+    root.mkdir(parents=True, exist_ok=True)
+    if uv_lock is not None:
+        write_lockfile(
+            UvToolboxLock(environments={'env1': EnvironmentLock(uv_lock=uv_lock)}), root / 'uv-toolbox.lock'
+        )
+    settings = UvToolboxSettings.model_validate(
+        {
+            'config_file': root / 'uv-toolbox.yaml',
+            'venv_path': root.parent / 'shared-venvs',
+            'environments': [{'name': 'env1', **env}],
+        },
+    )
+    return settings.environments[0].venv_path(settings)
+
+
+_LOCAL_UV_LOCK = _UV_LOCK.replace(
+    'source = { registry = "https://pypi.org/simple" }',
+    'source = { editable = "../../../plugins/ruff" }',
+)
+
+
+@pytest.mark.filterwarnings('ignore::FutureWarning')
+@pytest.mark.parametrize(
+    ('env', 'uv_lock'),
+    [
+        ({'dependencies': ['tool'], 'sources': {'tool': {'path': 'plugins/tool', 'editable': True}}}, None),
+        ({'dependencies': ['ruff']}, _LOCAL_UV_LOCK),
+        ({'requirements': '-e ./plugins/tool\n'}, None),
+    ],
+    ids=['declared-path-source', 'locked-editable', 'deprecated-editable'],
+)
+def test_local_paths_give_each_checkout_its_own_venv(
+    tmp_path: Path,
+    env: dict[str, object],
+    uv_lock: str | None,
+) -> None:
+    """Relative local paths read the same in every clone or worktree, but must not share a venv."""
+    first = _checkout(tmp_path / 'checkout-a', env, uv_lock)
+    second = _checkout(tmp_path / 'checkout-b', env, uv_lock)
+
+    assert first != second
+
+
+@pytest.mark.filterwarnings('ignore::FutureWarning')
+@pytest.mark.parametrize(
+    ('env', 'uv_lock'),
+    [
+        ({'dependencies': ['tool'], 'sources': {'tool': {'git': 'https://example.com/tool.git', 'tag': 'v1'}}}, None),
+        ({'dependencies': ['ruff']}, _UV_LOCK),
+        ({'requirements': 'ruff\n'}, None),
+    ],
+    ids=['declared-git-source', 'locked-registry', 'deprecated-registry'],
+)
+def test_environments_without_local_paths_share_venvs_across_projects(
+    tmp_path: Path,
+    env: dict[str, object],
+    uv_lock: str | None,
+) -> None:
+    """Without local paths, identical environments in different projects keep sharing one venv."""
+    assert _checkout(tmp_path / 'project-a', env, uv_lock) == _checkout(tmp_path / 'project-b', env, uv_lock)
+
+
+def test_locked_packages_digest_makes_local_sources_absolute(tmp_path: Path) -> None:
+    """Local lock sources are resolved against the generated project; other sources are untouched."""
+    project_dir = tmp_path / 'repo' / '.uv-toolbox' / 'projects' / 'env1'
+
+    digest = locked_packages_digest(_LOCAL_UV_LOCK, project_dir=project_dir)
+
+    assert (tmp_path / 'repo' / 'plugins' / 'ruff').as_posix() in digest
+    assert locked_packages_digest(_UV_LOCK, project_dir=project_dir) == locked_packages_digest(_UV_LOCK)
+
+
+@pytest.mark.parametrize(
+    ('line', 'local'),
+    [
+        ('-e ./plugin', True),
+        ('--editable=../plugin', True),
+        ('./plugin', True),
+        ('/abs/plugin', True),
+        ('plugin @ file:///abs/plugin', True),
+        ('C:\\plugins\\tool', True),
+        ('ruff>=0.14', False),
+        ('git+https://example.com/tool.git@v1#subdirectory=pkg', False),
+        ('-r requirements.txt', False),
+        ('e-tool', False),
+    ],
+)
+def test_is_local_requirement(line: str, *, local: bool) -> None:
+    """Deprecated requirement lines that install from local paths are recognized."""
+    assert _is_local_requirement(line) is local
 
 
 # ── lock_fingerprint ─────────────────────────────────────────────────────────
