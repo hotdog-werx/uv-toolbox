@@ -44,7 +44,7 @@ shellcheck = "0.11.0"
 
 "pipx:uv-toolbox" = { version = "0.0.0.dev0", uvx_args = "--with-editable ." }
 "pipx:ruff" = "0.14.14"
-"pipx:releez" = "1.0.1"
+"pipx:releez" = "1.1.1"
 "pipx:zensical" = "0.0.19"
 "pipx:ty" = "0.0.59"
 "pipx:complexipy" = "4.0.2"
