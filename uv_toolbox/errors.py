@@ -109,3 +109,27 @@ class MissingConfigFileError(UvToolboxError):
             f'Searched: {searched}. '
             'Use --config or UV_TOOLBOX_CONFIG_FILE to specify a file.',
         )
+
+
+class UnsupportedRequirementError(UvToolboxError):
+    """Raised when a deprecated requirements line cannot be converted to a uv project."""
+
+    line: str
+
+    def __init__(self, line: str, hint: str) -> None:
+        self.line = line
+        super().__init__(f'Cannot convert requirements line {line!r} to a uv project. {hint}')
+
+
+class UvVersionError(UvToolboxError):
+    """Raised when the installed uv is older than uv-toolbox requires."""
+
+    def __init__(self, *, found: str, minimum: str) -> None:
+        super().__init__(f'uv-toolbox requires uv >= {minimum}, found: {found.strip() or "unknown"}.')
+
+
+class LockfileOutdatedError(UvToolboxError):
+    """Raised when the repo lockfile was written in an older format."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(f'Lockfile format is outdated: {path}. Run `uv-toolbox lock`.')

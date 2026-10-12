@@ -6,25 +6,24 @@ eliminates naming conflicts.
 
 ## Overview
 
-Each virtual environment's location is determined by hashing its **normalized
-requirements**, not by user-defined names.
+Each virtual environment's location is determined by hashing **what it
+installs**, not by user-defined names. With a repo lockfile, that's the locked
+packages; without one, it's the environment's declared inputs.
 
 ```yaml
 environments:
   - name: formatting
-    requirements: |
-      ruff==0.13.0
-      black==24.0.0
+    dependencies: [ruff==0.13.0, black==24.0.0]
   - name: testing
-    requirements: pytest==8.0.0
+    dependencies: [pytest==8.0.0]
 ```
 
 Results in:
 
 ```
 ~/.cache/uv-toolbox/
-  ├── a3f7e2d4c1b9/  # hash of "black==24.0.0\nruff==0.13.0"
-  └── 9c8b7f6e5d4a/  # hash of "pytest==8.0.0"
+  ├── a3f7e2d4c1b9/  # formatting
+  └── 9c8b7f6e5d4a/  # testing
 ```
 
 **Users still reference by name:**
@@ -33,28 +32,28 @@ Results in:
 uvtb exec --env formatting -- ruff check
 ```
 
-The tool internally maps environment name → requirements hash → venv path.
+The tool internally maps environment name → content hash → venv path.
 
 ## Benefits
 
 ### Automatic Deduplication
 
-**Same requirements = same venv across projects:**
+**Same packages = same venv across projects:**
 
 ```yaml
 # Project A - web app
 environments:
   - name: dev
-    requirements: ruff==0.13.0
+    dependencies: [ruff==0.13.0]
 
 # Project B - CLI tool
 environments:
   - name: formatting
-    requirements: ruff==0.13.0
+    dependencies: [ruff==0.13.0]
 ```
 
-Both projects automatically share `~/.cache/uv-toolbox/acadbba99747/` - **saving
-disk space and setup time!**
+Once both are locked to the same packages, they share one venv in
+`~/.cache/uv-toolbox/`, **saving disk space and setup time!**
 
 ### No Naming Conflicts
 
@@ -72,9 +71,7 @@ No manual `project_name` needed - the hash provides automatic isolation:
 # Just define your environments - it works!
 environments:
   - name: dev
-    requirements: |
-      ruff
-      pytest
+    dependencies: [ruff, pytest]
 ```
 
 ### Works from Subdirectories
@@ -84,20 +81,42 @@ commands from anywhere in your project.
 
 ## How It Works
 
-### Normalization
+### With a repo lockfile
 
-Requirements are normalized before hashing to ensure consistency:
+When `uv-toolbox.lock` has an entry for the environment, the hash covers the
+**locked packages**: each package's name, version and source, taken from the
+embedded `uv.lock`. Everything else in the lock is ignored, including wheel URLs
+and upload times, uv's lock format `revision`, and the generated project's own
+entry. As a result:
 
-```python
-# These all hash to the same value:
-"ruff==0.13.0\npytest==8.0.0"
-"pytest==8.0.0\nruff==0.13.0"  # Different order
-"  ruff==0.13.0  \n  pytest==8.0.0  "  # Extra whitespace
-"# comment\nruff==0.13.0\npytest==8.0.0"  # Comments
+- Environments locked to the same packages share a venv, whatever their names or
+  how their dependencies were written.
+- A uv upgrade that only changes the lock format doesn't move environments to
+  new venvs.
 
-# After normalization (sorted, stripped, comments removed):
-"pytest==8.0.0\nruff==0.13.0"
-```
+### Without a repo lockfile
+
+The hash covers the environment's **declared inputs**: `dependencies`,
+`sources`, `requires_python` and the `uv` settings. For environments using the
+deprecated `requirements` / `requirements_file`, the requirements are normalized
+first (comments and blank lines removed, lines stripped and sorted), and a
+`requirements_file` is hashed by its contents, not its path.
+
+### Local paths
+
+A relative local path, such as `path: plugins/my-plugin` in `sources` or an
+editable package in the lock, reads the same in every clone or worktree of a
+project, but points at different code in each. So local paths are hashed by
+their **absolute** location: each checkout gets its own venv, and `uvtb exec` in
+one checkout never runs another checkout's code. For deprecated `requirements`,
+any local-path line (`-e ./plugin`, `./pkg`, `file:` URLs) adds the config
+file's directory to the hash.
+
+Environments without local paths are unaffected and keep sharing one venv across
+projects.
+
+The first install locks the environment and keeps that lock next to the venv
+(see [Locking](locking.md#machine-lock)).
 
 ### Hash Generation
 
@@ -105,20 +124,6 @@ Requirements are normalized before hashing to ensure consistency:
 - **Format**: `a3f7e2d4c1b9` (12 chars = 48 bits)
 - **Collision probability**: Negligible (~2.4M venvs needed for a 1% collision
   chance)
-
-### Requirements Files
-
-For `requirements_file`, the **file contents** are hashed, not the path:
-
-```yaml
-environments:
-  - name: dev
-    requirements_file: requirements-dev.txt
-```
-
-- ✅ Portable across machines
-- ✅ Changes to file update the hash
-- ✅ Different files with same content share venv
 
 ## Configuration
 
@@ -130,9 +135,7 @@ By default, venvs are stored in `~/.cache/uv-toolbox/`:
 # No venv_path needed - uses default
 environments:
   - name: dev
-    requirements: |
-      ruff
-      pytest
+    dependencies: [ruff, pytest]
 ```
 
 **Platform-specific defaults:**
@@ -149,22 +152,18 @@ You can still use project-local storage:
 venv_path: .uv-toolbox # Relative to config file
 environments:
   - name: dev
-    requirements: |
-      ruff
-      pytest
+    dependencies: [ruff, pytest]
 ```
 
 This stores venvs in `.uv-toolbox/<hash>/` within your project.
 
 ## Interaction with the Repo Lockfile
 
-When `uv-toolbox.lock` is present (generated by `uvtb lock`), the CAS hash is
-derived from the **resolved lockfile content** rather than the raw requirements
-spec. This means:
+Because the hash follows the locked packages:
 
-- Running `uvtb lock` (which pins new package versions) changes the hash
-- The next `uvtb install` after a `uvtb lock` creates a **new venv** at the new
-  hash address
+- Running `uvtb lock` in a way that changes package versions changes the hash
+- The next `uvtb install` after such a `uvtb lock` creates a **new venv** at the
+  new hash address
 - The old venv is left untouched and can be cleaned up manually
 
 This is intentional: the venv address reflects what's actually installed, not
@@ -182,50 +181,16 @@ uvtb exec --env dev -- uv pip install extra-package
 
 The venv is modified but the hash doesn't change. This is **by design**:
 
-- Hash is based on declared requirements
+- The hash is based on the lock (or the declared inputs)
 - Manual changes don't break the mapping
 - You're responsible for undeclared dependencies
-
-### Order Independence
-
-Requirement line order doesn't matter:
-
-```yaml
-# These create the SAME venv:
-requirements: |
-  ruff
-  black
----
-requirements: |
-  black
-  ruff
-```
-
-### Whitespace & Comments
-
-Full-line comments, blank lines, and leading/trailing whitespace are normalized
-away:
-
-```yaml
-requirements: |
-  # Formatting tools
-  ruff==0.13.0
-
-    black==24.0.0
-```
-
-Hashes the same as:
-
-```yaml
-requirements: |
-  black==24.0.0
-  ruff==0.13.0
-```
-
-Trailing comments on a requirement line (`ruff==0.13.0  # linter`) are **not**
-stripped, so they do change the hash.
+- The next `uvtb install` syncs the venv back to exactly what the lock lists,
+  removing the extra package
 
 ## Migration from Previous Versions
+
+Moving to uv project mode changed how hashes are computed, so the first install
+after upgrading creates new venvs; see [Migrating](migrating.md).
 
 **Breaking change** in v0.1.0:
 
@@ -243,5 +208,6 @@ stripped, so they do change the hash.
 For more implementation details, see the source code:
 
 - [`uv_toolbox/settings.py`](https://github.com/hotdog-werx/uv-toolbox/blob/master/uv_toolbox/settings.py)
-  — `UvToolboxEnvironment._get_requirements_hash()` (hashing) and
-  `UvToolboxEnvironment.venv_path()` (path resolution)
+  — `UvToolboxEnvironment._get_requirements_hash()` and
+  `locked_packages_digest()` (hashing) and `UvToolboxEnvironment.venv_path()`
+  (path resolution)

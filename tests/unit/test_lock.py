@@ -2,468 +2,119 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from uv_toolbox.lock import generate_environment_lock, generate_lock, stale_environments, update_lock
+from uv_toolbox.lock import check_lock, generate_lock, stale_environments, update_lock
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
-from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
+from uv_toolbox.settings import UvToolboxSettings
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
     from pytest_mock import MockerFixture
 
-_COMPILED = 'ruff==0.14.14 \\\n    --hash=sha256:aaaa'
 
-
-def _make_settings(
-    tmp_path: Path,
-    *,
-    envs: list[UvToolboxEnvironment],
-) -> UvToolboxSettings:
+def _settings(tmp_path: Path, *envs: tuple[str, list[str]]) -> UvToolboxSettings:
     return UvToolboxSettings.model_validate(
         {
-            'venv_path': tmp_path / '.uv-toolbox',
-            'show_commands': False,
-            'environments': [
-                {
-                    'name': e.name,
-                    'requirements': e.requirements,
-                    'requirements_file': e.requirements_file,
-                    'environment': e.environment,
-                }
-                for e in envs
-            ],
+            'config_file': tmp_path / 'uv-toolbox.yaml',
+            'environments': [{'name': name, 'dependencies': dependencies} for name, dependencies in envs],
         },
     )
 
 
-def test_generate_environment_lock_with_requirements_file(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Compiles a lockfile directly from a requirements_file path via `uv pip compile --generate-hashes`."""
-    req_file = tmp_path / 'requirements.txt'
-    req_file.write_text('ruff\n')
-    env = UvToolboxEnvironment(name='fmt', requirements_file=req_file)
-    settings = _make_settings(tmp_path, envs=[env])
+def _current(settings: UvToolboxSettings, name: str, uv_lock: str = 'locked') -> EnvironmentLock:
+    env = next(env for env in settings.environments if env.name == name)
+    return EnvironmentLock(uv_lock=uv_lock, fingerprint=env.lock_fingerprint())
 
-    temp_dir = tmp_path / 'compile'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
+
+def test_generate_lock_locks_every_environment_from_existing_entries(tmp_path: Path, mocker: MockerFixture) -> None:
+    """Each environment is locked starting from its existing uv.lock (or v1 pins), with flags forwarded."""
+    settings = _settings(tmp_path, ('fmt', ['ruff']), ('test', ['pytest']), ('new', ['mypy']))
+    lock_mock = mocker.patch('uv_toolbox.lock.lock_environment', side_effect=lambda env, *_, **__: f'{env.name}-lock')
+    existing = UvToolboxLock(
+        environments={
+            'fmt': EnvironmentLock(uv_lock='fmt-old'),
+            'test': EnvironmentLock(legacy_requirements='pytest==9'),
+            'removed': EnvironmentLock(uv_lock='gone'),
+        },
     )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    output_path = temp_dir / 'compiled-requirements.txt'
-    output_path.write_text(_COMPILED)
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
-    result = generate_environment_lock(env=env, settings=settings)
 
-    run_mock.assert_called_once_with(
-        args=[
-            'uv',
-            'pip',
-            'compile',
-            '--generate-hashes',
-            '--universal',
-            '--no-header',
-            '--no-annotate',
-            '-o',
-            str(output_path),
-            str(req_file),
-        ],
-        capture_stdout=True,
-        capture_stderr=False,
-        extra_env={**env.configured_env(), 'VIRTUAL_ENV': None},
-        show_command=False,
-    )
-    assert result == _COMPILED
+    lock = generate_lock(settings, existing_lock=existing, upgrade_packages=['ruff'], refresh=True)
 
-
-def test_generate_environment_lock_with_inline_requirements(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Writes inline requirements to a named temp file, compiles it, then cleans up the temp directory."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
-    settings = _make_settings(tmp_path, envs=[env])
-
-    temp_dir = tmp_path / 'tmp'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
-    )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    output_path = temp_dir / 'compiled-requirements.txt'
-    output_path.write_text(_COMPILED)
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
-
-    result = generate_environment_lock(env=env, settings=settings)
-
-    temp_req_file = temp_dir / 'requirements_fmt.txt'
-    assert temp_req_file.read_text() == 'ruff\n'
-    run_mock.assert_called_once_with(
-        args=[
-            'uv',
-            'pip',
-            'compile',
-            '--generate-hashes',
-            '--universal',
-            '--no-header',
-            '--no-annotate',
-            '-o',
-            str(output_path),
-            str(temp_req_file),
-        ],
-        capture_stdout=True,
-        capture_stderr=False,
-        extra_env={**env.configured_env(), 'VIRTUAL_ENV': None},
-        show_command=False,
-    )
-    assert result == _COMPILED
-
-
-def test_generate_environment_lock_uses_declared_requirements_when_lock_is_injected(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Refreshing a lock resolves source requirements rather than existing locked content."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff>=0.14\n')
-    env._resolved_requirements = 'ruff==0.14.14\n'
-    settings = _make_settings(tmp_path, envs=[env])
-    temp_dir = tmp_path / 'compile'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
-    )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
-    mocker.patch('uv_toolbox.lock.run_checked')
-
-    generate_environment_lock(env=env, settings=settings)
-
-    assert (temp_dir / 'requirements_fmt.txt').read_text() == 'ruff>=0.14\n'
-
-
-def test_generate_environment_lock_preserves_dash_file(
-    mocker: MockerFixture,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Lock generation never changes a caller-owned file named `-`."""
-    monkeypatch.chdir(tmp_path)
-    dash_file = tmp_path / '-'
-    dash_file.write_text('keep me')
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
-    settings = _make_settings(tmp_path, envs=[env])
-    temp_dir = tmp_path / 'compile'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
-    )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
-    mocker.patch('uv_toolbox.lock.run_checked')
-
-    generate_environment_lock(env=env, settings=settings)
-
-    assert dash_file.read_text() == 'keep me'
-
-
-def test_generate_environment_lock_passes_configured_env_without_virtual_env(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Locking receives configured variables without targeting a materialized venv."""
-    env = UvToolboxEnvironment(
-        name='fmt',
-        requirements='ruff\n',
-        environment={'UV_INDEX_URL': 'https://example.com/simple'},
-    )
-    settings = _make_settings(tmp_path, envs=[env])
-    temp_dir = tmp_path / 'compile'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
-    )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    (temp_dir / 'compiled-requirements.txt').write_text(_COMPILED)
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
-
-    generate_environment_lock(env=env, settings=settings)
-
-    extra_env = run_mock.call_args.kwargs['extra_env']
-    assert extra_env == {
-        'UV_INDEX_URL': 'https://example.com/simple',
-        'VIRTUAL_ENV': None,
+    assert list(lock.environments) == ['fmt', 'test', 'new']
+    for env in settings.environments:
+        assert lock.environments[env.name] == EnvironmentLock(
+            uv_lock=f'{env.name}-lock',
+            fingerprint=env.lock_fingerprint(),
+        )
+    calls = {call.args[0].name: call.kwargs for call in lock_mock.call_args_list}
+    assert calls['fmt']['uv_lock'] == 'fmt-old'
+    assert calls['test'] == {
+        'uv_lock': None,
+        'legacy_requirements': 'pytest==9',
+        'upgrade': False,
+        'upgrade_packages': ['ruff'],
+        'refresh': True,
     }
+    assert calls['new']['uv_lock'] is None
 
 
-def test_generate_environment_lock_seeds_existing_pins_for_validation(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Validation gives uv the committed output so compatible transitive pins remain stable."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff>=0.14')
-    settings = _make_settings(tmp_path, envs=[env])
-    temp_dir = tmp_path / 'compile'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
-    )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
+def test_generate_lock_without_existing_lock_forwards_upgrade(tmp_path: Path, mocker: MockerFixture) -> None:
+    """Without a lockfile every environment is locked from scratch."""
+    settings = _settings(tmp_path, ('fmt', ['ruff']))
+    lock_mock = mocker.patch('uv_toolbox.lock.lock_environment', return_value='lock')
 
-    result = generate_environment_lock(
-        env=env,
-        settings=settings,
-        existing_requirements=_COMPILED,
-    )
+    generate_lock(settings, upgrade=True)
 
-    assert (temp_dir / 'compiled-requirements.txt').read_text() == _COMPILED
-    assert result == _COMPILED
-    run_mock.assert_called_once()
+    assert lock_mock.call_args.kwargs['uv_lock'] is None
+    assert lock_mock.call_args.kwargs['upgrade'] is True
 
 
-def test_generate_lock_covers_all_environments(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """generate_lock produces a UvToolboxLock with an entry for every configured environment."""
-    envs = [
-        UvToolboxEnvironment(name='fmt', requirements='ruff'),
-        UvToolboxEnvironment(name='test', requirements='pytest'),
-    ]
-    settings = _make_settings(tmp_path, envs=envs)
-
-    mocker.patch(
-        'uv_toolbox.lock.generate_environment_lock',
-        side_effect=['ruff==0.14.14\n', 'pytest==9.0.2\n'],
-    )
-
-    lock = generate_lock(settings=settings)
-
-    assert isinstance(lock, UvToolboxLock)
-    assert set(lock.environments) == {'fmt', 'test'}
-    assert lock.environments['fmt'].requirements == 'ruff==0.14.14\n'
-    assert lock.environments['test'].requirements == 'pytest==9.0.2\n'
-
-
-def test_generate_lock_returns_environment_lock_instances(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """generate_lock wraps each environment's compiled requirements in an EnvironmentLock instance."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff')
-    settings = _make_settings(tmp_path, envs=[env])
-    mocker.patch(
-        'uv_toolbox.lock.generate_environment_lock',
-        return_value=_COMPILED,
-    )
-
-    lock = generate_lock(settings=settings)
-
-    assert isinstance(lock.environments['fmt'], EnvironmentLock)
-    assert lock.environments['fmt'].fingerprint == settings.environments[0].lock_fingerprint()
-
-
-def test_generate_lock_passes_existing_environment_pins(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Existing pins are matched to environments by name during validation."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff')
-    settings = _make_settings(tmp_path, envs=[env])
-    existing_lock = UvToolboxLock(
-        environments={'fmt': EnvironmentLock(requirements=_COMPILED)},
-    )
-    generate_mock = mocker.patch(
-        'uv_toolbox.lock.generate_environment_lock',
-        return_value=_COMPILED,
-    )
-
-    generate_lock(settings=settings, existing_lock=existing_lock)
-
-    generate_mock.assert_called_once_with(
-        env=settings.environments[0],
-        settings=settings,
-        existing_requirements=_COMPILED,
-        refresh=False,
-        upgrade=False,
-    )
-
-
-def test_generate_environment_lock_forwards_refresh_flag(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """`refresh=True` passes `--refresh` to `uv pip compile`."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
-    settings = _make_settings(tmp_path, envs=[env])
-    temp_dir = tmp_path / 'compile'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
-    )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    output_path = temp_dir / 'compiled-requirements.txt'
-    output_path.write_text(_COMPILED)
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
-
-    generate_environment_lock(env=env, settings=settings, refresh=True)
-
-    assert run_mock.call_args.kwargs['args'] == [
-        'uv',
-        'pip',
-        'compile',
-        '--generate-hashes',
-        '--universal',
-        '--no-header',
-        '--no-annotate',
-        '--refresh',
-        '-o',
-        str(output_path),
-        str(temp_dir / 'requirements_fmt.txt'),
-    ]
-
-
-def test_generate_environment_lock_forwards_upgrade_flag(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """`upgrade=True` passes `--upgrade` to `uv pip compile`."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff\n')
-    settings = _make_settings(tmp_path, envs=[env])
-    temp_dir = tmp_path / 'compile'
-    temp_dir.mkdir()
-    temporary_directory = mocker.patch(
-        'uv_toolbox.lock.tempfile.TemporaryDirectory',
-    )
-    temporary_directory.return_value.__enter__.return_value = str(temp_dir)
-    output_path = temp_dir / 'compiled-requirements.txt'
-    output_path.write_text(_COMPILED)
-    run_mock = mocker.patch('uv_toolbox.lock.run_checked')
-
-    generate_environment_lock(env=env, settings=settings, upgrade=True)
-
-    assert run_mock.call_args.kwargs['args'] == [
-        'uv',
-        'pip',
-        'compile',
-        '--generate-hashes',
-        '--universal',
-        '--no-header',
-        '--no-annotate',
-        '--upgrade',
-        '-o',
-        str(output_path),
-        str(temp_dir / 'requirements_fmt.txt'),
-    ]
-
-
-def test_generate_lock_forwards_refresh_to_environments(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """generate_lock forwards `refresh` to each environment's compile call."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff')
-    settings = _make_settings(tmp_path, envs=[env])
-    generate_mock = mocker.patch(
-        'uv_toolbox.lock.generate_environment_lock',
-        return_value=_COMPILED,
-    )
-
-    generate_lock(settings=settings, refresh=True)
-
-    generate_mock.assert_called_once_with(
-        env=settings.environments[0],
-        settings=settings,
-        existing_requirements=None,
-        refresh=True,
-        upgrade=False,
-    )
-
-
-def test_generate_lock_forwards_upgrade_to_environments(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """generate_lock forwards `upgrade` to each environment's compile call."""
-    env = UvToolboxEnvironment(name='fmt', requirements='ruff')
-    settings = _make_settings(tmp_path, envs=[env])
-    generate_mock = mocker.patch(
-        'uv_toolbox.lock.generate_environment_lock',
-        return_value=_COMPILED,
-    )
-
-    generate_lock(settings=settings, upgrade=True)
-
-    generate_mock.assert_called_once_with(
-        env=settings.environments[0],
-        settings=settings,
-        existing_requirements=None,
-        refresh=False,
-        upgrade=True,
-    )
-
-
-def test_stale_environments_flags_missing_and_mismatched_entries(tmp_path: Path) -> None:
-    """Entries that are absent, lack a fingerprint, or carry a different fingerprint are stale."""
-    settings = _make_settings(
-        tmp_path,
-        envs=[
-            UvToolboxEnvironment(name='current', requirements='ruff'),
-            UvToolboxEnvironment(name='legacy', requirements='ruff'),
-            UvToolboxEnvironment(name='changed', requirements='black>=25'),
-            UvToolboxEnvironment(name='missing', requirements='mypy'),
-        ],
-    )
+def test_stale_environments(tmp_path: Path) -> None:
+    """Missing, fingerprint-mismatched and version 1 entries are stale; current entries are not."""
+    settings = _settings(tmp_path, ('current', ['ruff']), ('changed', ['black']), ('missing', ['mypy']), ('v1', ['x']))
+    v1_env = settings.environments[3]
     lock = UvToolboxLock(
         environments={
-            'current': EnvironmentLock(
-                requirements=_COMPILED,
-                fingerprint=settings.environments[0].lock_fingerprint(),
-            ),
-            'legacy': EnvironmentLock(requirements=_COMPILED),
-            'changed': EnvironmentLock(
-                requirements=_COMPILED,
-                fingerprint=UvToolboxEnvironment(name='changed', requirements='black').lock_fingerprint(),
-            ),
+            'current': _current(settings, 'current'),
+            'changed': EnvironmentLock(uv_lock='locked', fingerprint='sha256:old'),
+            'v1': EnvironmentLock(legacy_requirements='x==1', fingerprint=v1_env.lock_fingerprint()),
         },
     )
 
-    assert stale_environments(settings, lock) == ['legacy', 'changed', 'missing']
+    assert stale_environments(settings, lock) == ['changed', 'missing', 'v1']
 
 
-def test_update_lock_reuses_current_entries_and_seeds_stale_ones(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Only stale environments are compiled, seeded with their previous pins; removed ones are dropped."""
-    settings = _make_settings(
-        tmp_path,
-        envs=[
-            UvToolboxEnvironment(name='current', requirements='ruff'),
-            UvToolboxEnvironment(name='stale', requirements='black>=25'),
-            UvToolboxEnvironment(name='new', requirements='mypy'),
-        ],
-    )
-    current_entry = EnvironmentLock(requirements=_COMPILED, fingerprint='sha256:current')
-    existing_lock = UvToolboxLock(
+def test_update_lock_relocks_only_stale_environments(tmp_path: Path, mocker: MockerFixture) -> None:
+    """Up-to-date entries are copied unchanged, stale ones re-locked from their old lock, removed ones dropped."""
+    settings = _settings(tmp_path, ('current', ['ruff']), ('changed', ['black>=24']))
+    lock_mock = mocker.patch('uv_toolbox.lock.lock_environment', return_value='relocked')
+    current = _current(settings, 'current')
+    existing = UvToolboxLock(
         environments={
-            'current': current_entry,
-            'stale': EnvironmentLock(requirements='black==24.0.0'),
-            'removed': EnvironmentLock(requirements='isort==5.0.0'),
+            'current': current,
+            'changed': EnvironmentLock(uv_lock='old', fingerprint='sha256:old'),
+            'removed': EnvironmentLock(uv_lock='gone'),
         },
     )
-    compile_mock = mocker.patch(
-        'uv_toolbox.lock.generate_environment_lock',
-        return_value='compiled',
+
+    lock = update_lock(settings, existing, ['changed'])
+
+    assert lock.environments == {
+        'current': current,
+        'changed': EnvironmentLock(uv_lock='relocked', fingerprint=settings.environments[1].lock_fingerprint()),
+    }
+    lock_mock.assert_called_once()
+    assert lock_mock.call_args.kwargs['uv_lock'] == 'old'
+
+
+def test_check_lock_collects_failures(tmp_path: Path, mocker: MockerFixture) -> None:
+    """Every environment is checked against its uv.lock; failures are reported by name."""
+    settings = _settings(tmp_path, ('ok', ['ruff']), ('bad', ['black']))
+    check_mock = mocker.patch(
+        'uv_toolbox.lock.check_environment',
+        side_effect=lambda env, *_, **__: None if env.name == 'ok' else 'needs to be updated',
     )
+    lock = UvToolboxLock(environments={'ok': _current(settings, 'ok', 'a'), 'bad': _current(settings, 'bad', 'b')})
 
-    lock = update_lock(settings, existing_lock, ['stale', 'new'])
-
-    assert list(lock.environments) == ['current', 'stale', 'new']
-    assert lock.environments['current'] is current_entry
-    seeded = {call.kwargs['env'].name: call.kwargs['existing_requirements'] for call in compile_mock.call_args_list}
-    assert seeded == {'stale': 'black==24.0.0', 'new': None}
-    assert lock.environments['stale'].fingerprint == settings.environments[1].lock_fingerprint()
+    assert check_lock(settings, lock) == {'bad': 'needs to be updated'}
+    assert [call.kwargs['uv_lock'] for call in check_mock.call_args_list] == ['a', 'b']

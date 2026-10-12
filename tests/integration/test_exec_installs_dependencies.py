@@ -72,9 +72,9 @@ def test_integration_exec_installs_project_dependencies(
         venv_path: .uv-toolbox
         environments:
           - name: tools
-            requirements: |
-              ruff
-              myproject @ .
+            dependencies: [ruff, myproject]
+            sources:
+              myproject: { path: . }
             executables_override: [ruff]
     """).strip()
         + '\n',

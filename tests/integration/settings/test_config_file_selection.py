@@ -30,7 +30,7 @@ def _write_config(tmp_path: Path) -> Path:
                 f'venv_path: {venv_path}',
                 'environments:',
                 '  - name: env1',
-                '    requirements: ruff',
+                '    dependencies: [ruff]',
                 '',
             ],
         ),
@@ -178,7 +178,7 @@ def test_from_context_reads_pyproject_when_config_set(
                 f'venv_path = "{venv_path}"',
                 '[[tool.uv-toolbox.environments]]',
                 'name = "env1"',
-                'requirements = "ruff"',
+                'dependencies = ["ruff"]',
                 '',
             ],
         ),
@@ -207,7 +207,7 @@ def test_from_context_reads_json_and_toml_configs(
             json.dumps(
                 {
                     'venv_path': (tmp_path / '.uv-toolbox').as_posix(),
-                    'environments': [{'name': 'env1', 'requirements': 'ruff'}],
+                    'environments': [{'name': 'env1', 'dependencies': ['ruff']}],
                 },
             ),
         )
@@ -219,7 +219,7 @@ def test_from_context_reads_json_and_toml_configs(
                     f'venv_path = "{venv_path}"',
                     '[[environments]]',
                     'name = "env1"',
-                    'requirements = "ruff"',
+                    'dependencies = ["ruff"]',
                     '',
                 ],
             ),

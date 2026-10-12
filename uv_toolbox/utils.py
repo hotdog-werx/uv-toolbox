@@ -26,3 +26,15 @@ def _venv_bin_path(venv_path: Path) -> Path:
             environment.
     """
     return venv_path / ('Scripts' if os.name == 'nt' else 'bin')
+
+
+def _venv_python(venv_path: Path) -> Path:
+    """Return the path to the Python interpreter of the virtualenv.
+
+    Args:
+        venv_path: The path to the virtual environment.
+
+    Returns:
+        The path to the venv's `python` (or `python.exe` on Windows).
+    """
+    return _venv_bin_path(venv_path) / ('python.exe' if os.name == 'nt' else 'python')
