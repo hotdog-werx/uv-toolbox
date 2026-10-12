@@ -1,3 +1,15 @@
+## [0.4.0] - 2026-10-12
+
+### 🚀 Features
+
+- Lock and install environments with uv project mode (#22) by
+  [@jamestrousdale](https://github.com/jamestrousdale) in
+  [#22](https://github.com/hotdog-werx/uv-toolbox/pull/22)
+
+### ⚙️ Miscellaneous Tasks
+
+- Docs nav + formatting by [@jamestrousdale](https://github.com/jamestrousdale)
+
 ## [0.3.2] - 2026-09-24
 
 ### 🐛 Bug Fixes
