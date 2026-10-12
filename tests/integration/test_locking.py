@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,14 @@ from uv_toolbox.lockfile import read_lockfile
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+# uv panics with `Git URL is invalid: AmbiguousAuthority` when it re-serializes
+# a resolved `file://` git source on Windows, so local repositories can't be
+# used as sources there. The code under test is platform-independent.
+pytestmark = pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='uv cannot lock file:// git sources on Windows',
+)
 
 _GIT_ENV = {
     'GIT_AUTHOR_NAME': 'test',
