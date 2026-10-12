@@ -182,12 +182,13 @@ def test_legacy_pins_reads_version_1_entries() -> None:
 
 def test_render_pyproject_is_valid_toml_with_passthrough_and_rebased_sources(tmp_path: Path) -> None:
     """The generated project copies the passthrough verbatim and makes source paths project-relative."""
+    absolute = (tmp_path / 'elsewhere' / 'absolute').as_posix()
     spec = ProjectSpec(
         dependencies=['tool', 'plugin', 'quoted "name" >=1'],
         sources={
             'tool': {'git': 'https://example.com/tool.git', 'tag': 'v1'},
             'plugin': [{'path': 'plugins/plugin', 'editable': True, 'marker': "os_name == 'posix'"}],
-            'absolute': {'path': '/opt/absolute'},
+            'absolute': {'path': absolute},
         },
         uv_settings={
             'constraint-dependencies': ['pydantic<3'],
@@ -213,7 +214,7 @@ def test_render_pyproject_is_valid_toml_with_passthrough_and_rebased_sources(tmp
     assert data['tool']['uv'].pop('sources') == {
         'tool': {'git': 'https://example.com/tool.git', 'tag': 'v1'},
         'plugin': [{'path': '../../../plugins/plugin', 'editable': True, 'marker': "os_name == 'posix'"}],
-        'absolute': {'path': '/opt/absolute'},
+        'absolute': {'path': absolute},
     }
     assert data['tool']['uv'] == {'package': False, **spec.uv_settings, 'exclude-newer': '2026-01-01'}
 

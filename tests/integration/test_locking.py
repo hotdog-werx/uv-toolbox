@@ -7,7 +7,6 @@ them proves that a command did not look a git ref up again.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from textwrap import dedent
 from typing import TYPE_CHECKING
@@ -105,8 +104,8 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 requires_python: '>=3.11'
                 dependencies: [tool-a, tool-b]
                 sources:
-                  tool-a: {{ git: 'file://{repos / 'tool-a'}', tag: v1 }}
-                  tool-b: {{ git: 'file://{repos / 'tool-b'}', tag: v1 }}
+                  tool-a: {{ git: '{(repos / 'tool-a').as_uri()}', tag: v1 }}
+                  tool-b: {{ git: '{(repos / 'tool-b').as_uri()}', tag: v1 }}
         """),
     )
     return project_dir
@@ -120,7 +119,10 @@ def test_relock_and_check_do_not_look_up_git_refs(project: Path) -> None:
     assert 'uv_lock: |' in lock_text
     assert '?tag=v1#' in lock_text
 
-    shutil.rmtree(project.parent / 'repos')
+    # Renaming (rather than deleting, which trips over git's read-only files on
+    # Windows) makes every source URL unreachable.
+    repos = project.parent / 'repos'
+    repos.rename(repos.with_name('repos-gone'))
 
     relock = _uvtb(project, 'lock')
     _assert_ok(relock)
