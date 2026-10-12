@@ -56,7 +56,7 @@ def _release(repo: Path, name: str, version: str, tag: str) -> str:
             version = "{version}"
 
             [build-system]
-            requires = ["uv_build>=0.9,<0.10"]
+            requires = ["uv_build>=0.12,<0.13"]
             build-backend = "uv_build"
         """),
     )

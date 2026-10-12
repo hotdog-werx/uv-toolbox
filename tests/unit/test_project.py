@@ -7,6 +7,8 @@ from textwrap import dedent
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
+from packaging.version import Version
 
 from uv_toolbox import project
 from uv_toolbox.errors import ExternalCommandError, UnsupportedRequirementError, UvVersionError
@@ -251,6 +253,7 @@ def test_resolve_requires_python_prefers_config_then_lock_then_interpreter(
 @pytest.mark.parametrize(
     ('output', 'ok'),
     [
+        ('uv 0.12.24 (5411378eb 2026-10-08 aarch64-apple-darwin)', True),
         ('uv 0.9.27 (b5797b2ab 2026-01-26)', True),
         ('uv 0.8.0', True),
         ('uv 0.7.22 (abc 2025-06-01)', False),
@@ -523,3 +526,14 @@ def test_sync_environment_without_locked_requires_python(tmp_path: Path, mocker:
 
     pyproject = tomllib.loads((settings.project_dir(env) / 'pyproject.toml').read_text())
     assert pyproject['project']['requires-python'] == '>=3.11'
+
+
+def test_ci_uv_matrix_spans_supported_versions() -> None:
+    """CI tests the minimum supported uv minor and the uv version pinned for development."""
+    root = Path(__file__).parents[2]
+    workflow = yaml.safe_load((root / '.github' / 'workflows' / 'ci-checks.yaml').read_text())
+    tested = [Version(v) for v in workflow['jobs']['uv-compatibility']['strategy']['matrix']['uv']]
+    pinned = Version(tomllib.loads((root / 'mise.toml').read_text())['tools']['uv'])
+
+    assert min(tested).release[:2] == project.MIN_UV_VERSION.release[:2]
+    assert max(tested) == pinned

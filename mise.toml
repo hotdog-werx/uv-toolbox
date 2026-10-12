@@ -35,7 +35,7 @@ run = "uv-toolbox exec --env repolish -- repolish link"
 run = "mise run workspace:setup-hook"
 
 [tools]
-uv = "0.9.27"
+uv = "0.12.24"
 dprint = "0.55.1"
 starship = "1.24.2"
 git-cliff = "2.12.0"
