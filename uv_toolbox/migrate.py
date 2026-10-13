@@ -46,7 +46,7 @@ class Migration:
 
 def _load(config_file: Path) -> tuple[dict[str, typing.Any], dict[str, typing.Any]]:
     """Return the parsed config file and its uv-toolbox table."""
-    text = config_file.read_text()
+    text = config_file.read_text(encoding='utf-8')
     suffix = config_file.suffix.lower()
     if suffix in {'.yaml', '.yml'}:
         document = yaml.safe_load(text) or {}

@@ -114,7 +114,9 @@ def write_lockfile(lock: UvToolboxLock, path: Path) -> None:
             Dumper=_LiteralDumper,
             default_flow_style=False,
             sort_keys=False,
+            allow_unicode=True,
         ),
+        encoding='utf-8',
     )
 
 
@@ -130,7 +132,7 @@ def read_lockfile(path: Path) -> UvToolboxLock:
     Returns:
         Parsed UvToolboxLock.
     """
-    data = yaml.safe_load(path.read_text()) or {}
+    data = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
     version = int(data.get('version', 1))
     environments = {
         name: EnvironmentLock(

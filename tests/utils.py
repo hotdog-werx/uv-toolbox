@@ -27,11 +27,11 @@ def create_fake_venv(venv_path: Path, tools: list[str]) -> None:
         if os.name == 'nt':
             # On Windows, create .exe files
             tool_path = bin_path / f'{tool}.exe'
-            tool_path.write_text('fake executable')
+            tool_path.write_text('fake executable', encoding='utf-8')
         else:
             # On Unix, create executable files
             tool_path = bin_path / tool
-            tool_path.write_text('#!/usr/bin/env python\nprint("fake tool")\n')
+            tool_path.write_text('#!/usr/bin/env python\nprint("fake tool")\n', encoding='utf-8')
             tool_path.chmod(
                 tool_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
             )
@@ -51,9 +51,9 @@ def create_fake_distribution(
         site_packages = venv_path / 'lib' / 'python3.13' / 'site-packages'
     dist_info = site_packages / f'{name.replace("-", "_")}-1.0.0.dist-info'
     dist_info.mkdir(parents=True, exist_ok=True)
-    (dist_info / 'METADATA').write_text(f'Metadata-Version: 2.1\nName: {name}\nVersion: 1.0.0\n')
+    (dist_info / 'METADATA').write_text(f'Metadata-Version: 2.1\nName: {name}\nVersion: 1.0.0\n', encoding='utf-8')
     (dist_info / 'entry_points.txt').write_text(
-        '[console_scripts]\n' + ''.join(f'{script} = example:main\n' for script in scripts),
+        '[console_scripts]\n' + ''.join(f'{script} = example:main\n' for script in scripts), encoding='utf-8'
     )
     if direct_url is not None:
-        (dist_info / 'direct_url.json').write_text(dumps(direct_url))
+        (dist_info / 'direct_url.json').write_text(dumps(direct_url), encoding='utf-8')

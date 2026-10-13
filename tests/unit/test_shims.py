@@ -394,7 +394,7 @@ def test_unix_shim_contains_correct_paths(tmp_path: Path) -> None:
     create_fake_venv(venv_path, ['ruff'])
 
     shim_dirs = create_shims(settings=settings)
-    shim_content = (shim_dirs[0] / 'ruff').read_text()
+    shim_content = (shim_dirs[0] / 'ruff').read_text(encoding='utf-8')
 
     assert 'export UV_INDEX_URL=' in shim_content
     assert "'https://example.com/simple index'" in shim_content
@@ -420,10 +420,10 @@ def test_windows_shim_contains_correct_paths(tmp_path: Path) -> None:
 
     bin_path = venv_path / 'Scripts'
     bin_path.mkdir(parents=True, exist_ok=True)
-    (bin_path / 'ruff.exe').write_text('fake')
+    (bin_path / 'ruff.exe').write_text('fake', encoding='utf-8')
 
     shim_dirs = create_shims(settings=settings)
-    shim_content = (shim_dirs[0] / 'ruff.bat').read_text()
+    shim_content = (shim_dirs[0] / 'ruff.bat').read_text(encoding='utf-8')
 
     assert 'set "UV_INDEX_URL=https://example.com/100%%25"' in shim_content
     assert f'set "VIRTUAL_ENV={venv_path}"' in shim_content
@@ -445,7 +445,7 @@ def test_windows_shim_serializes_configured_environment(tmp_path: Path) -> None:
         {'UV_INDEX_URL': 'https://example.com/100%25'},
     )
 
-    shim_content = shim_path.with_suffix('.bat').read_text()
+    shim_content = shim_path.with_suffix('.bat').read_text(encoding='utf-8')
     assert 'set "UV_INDEX_URL=https://example.com/100%%25"' in shim_content
     assert f'set "VIRTUAL_ENV={venv_path}"' in shim_content
 
@@ -460,7 +460,7 @@ def test_create_shim_for_executable_forwards_environment_on_windows(
     shim_dir = venv_path / 'shims'
     bin_path.mkdir(parents=True)
     shim_dir.mkdir()
-    (bin_path / 'ruff.exe').write_text('fake')
+    (bin_path / 'ruff.exe').write_text('fake', encoding='utf-8')
     monkeypatch.setattr(shims.os, 'name', 'nt')
 
     _create_shim_for_executable(
@@ -471,4 +471,4 @@ def test_create_shim_for_executable_forwards_environment_on_windows(
         {'FROM_CONFIG': 'yes'},
     )
 
-    assert 'set "FROM_CONFIG=yes"' in (shim_dir / 'ruff.bat').read_text()
+    assert 'set "FROM_CONFIG=yes"' in (shim_dir / 'ruff.bat').read_text(encoding='utf-8')

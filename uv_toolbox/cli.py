@@ -3,7 +3,7 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import Annotated, TextIO
+from typing import Annotated
 
 import typer
 
@@ -12,6 +12,7 @@ from uv_toolbox.lock import check_lock, generate_lock, stale_environments, updat
 from uv_toolbox.lockfile import lockfiles_equal, read_lockfile, write_lockfile
 from uv_toolbox.migrate import migrate_config
 from uv_toolbox.process import run_checked
+from uv_toolbox.project import LockOptions
 from uv_toolbox.settings import UvToolboxSettings
 from uv_toolbox.shims import create_shims
 from uv_toolbox.utils import _filter_nulls, _venv_python
@@ -20,15 +21,12 @@ from uv_toolbox.uv_helpers import initialize_virtualenv
 app = typer.Typer(help='CLI tool for managing UV tool environments.')
 
 
-def _show_warning(  # noqa: PLR0913
-    message: Warning | str,
-    category: type[Warning],
-    filename: str,  # noqa: ARG001
-    lineno: int,  # noqa: ARG001
-    file: TextIO | None = None,  # noqa: ARG001
-    line: str | None = None,  # noqa: ARG001
-) -> None:
-    """Print warnings (such as config deprecations) without source locations."""
+def _show_warning(message: Warning | str, category: type[Warning], *_location: object) -> None:
+    """Print warnings (such as config deprecations) without source locations.
+
+    Replaces `warnings.showwarning`, whose remaining arguments (filename,
+    line number, file and source line) are deliberately ignored.
+    """
     typer.secho(f'{category.__name__}: {message}', err=True, fg=typer.colors.YELLOW)
 
 
@@ -94,20 +92,11 @@ def _check_lockfile(
 def _write_lockfile(
     settings: UvToolboxSettings,
     lockfile_path: Path,
-    *,
-    upgrade: bool = False,
-    upgrade_packages: list[str] | None = None,
-    refresh: bool = False,
+    options: LockOptions,
 ) -> None:
     """Lock every environment and write the repo lockfile, keeping existing pins."""
     existing_lock = read_lockfile(lockfile_path) if lockfile_path.exists() else None
-    lock_data = generate_lock(
-        settings=settings,
-        existing_lock=existing_lock,
-        upgrade=upgrade,
-        upgrade_packages=upgrade_packages or [],
-        refresh=refresh,
-    )
+    lock_data = generate_lock(settings=settings, existing_lock=existing_lock, options=options)
     if existing_lock is not None and lockfiles_equal(lock_data, existing_lock):
         typer.echo(f'Lockfile is up to date: {lockfile_path}')
         return
@@ -276,9 +265,7 @@ def lock(  # noqa: PLR0913
             _write_lockfile(
                 settings,
                 lockfile_path,
-                upgrade=upgrade,
-                upgrade_packages=upgrade_packages,
-                refresh=refresh,
+                LockOptions(upgrade=upgrade, upgrade_packages=tuple(upgrade_packages or ()), refresh=refresh),
             )
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
@@ -425,7 +412,7 @@ def migrate_config_command(
         )
         typer.echo(migration.content)
         return
-    original = config_file.read_text()
+    original = config_file.read_text(encoding='utf-8')
     diff = difflib.unified_diff(
         original.splitlines(keepends=True),
         migration.content.splitlines(keepends=True),
@@ -440,7 +427,7 @@ def migrate_config_command(
     )
     if not yes and not typer.confirm(f'Write {config_file}?'):
         raise typer.Exit(code=1)
-    config_file.write_text(migration.content)
+    config_file.write_text(migration.content, encoding='utf-8')
     typer.echo(f'Migrated {", ".join(migration.migrated)} in {config_file}. Run `uv-toolbox lock` to re-lock.')
 
 

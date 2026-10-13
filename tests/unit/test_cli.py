@@ -14,6 +14,7 @@ from uv_toolbox.cli import app
 from uv_toolbox.errors import CommandDelimiterRequiredError, UvToolboxError
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock, read_lockfile, write_lockfile
 from uv_toolbox.migrate import Migration
+from uv_toolbox.project import LockOptions
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 from uv_toolbox.utils import _venv_python
 
@@ -46,7 +47,7 @@ def _write_config(
         ],
     )
     config_path = tmp_path / 'uvtb.yaml'
-    config_path.write_text(contents)
+    config_path.write_text(contents, encoding='utf-8')
     return config_path
 
 
@@ -137,7 +138,7 @@ def test_shim_outputs_paths(tmp_path: Path) -> None:
         ],
     )
     config_path = tmp_path / 'uvtb.yaml'
-    config_path.write_text(contents)
+    config_path.write_text(contents, encoding='utf-8')
 
     settings = UvToolboxSettings.model_validate(
         {
@@ -265,9 +266,7 @@ def test_shim_list_paths_prints_one_dir_per_line(tmp_path: Path) -> None:
         '    executables_override: [ruff]',
     ]
     config_path = tmp_path / 'uvtb.yaml'
-    config_path.write_text(
-        '\n'.join([f'venv_path: {venv_root}', 'environments:', *env_lines, '']),
-    )
+    config_path.write_text('\n'.join([f'venv_path: {venv_root}', 'environments:', *env_lines, '']), encoding='utf-8')
 
     settings = UvToolboxSettings.model_validate(
         {
@@ -381,18 +380,13 @@ def test_lock_keeps_existing_pins_and_skips_unchanged_write(mocker: MockerFixtur
 @pytest.mark.parametrize(
     ('flags', 'expected'),
     [
-        (['--refresh'], {'refresh': True, 'upgrade': False, 'upgrade_packages': []}),
-        (['--upgrade'], {'refresh': False, 'upgrade': True, 'upgrade_packages': []}),
-        (
-            ['-P', 'ruff', '--upgrade-package', 'click'],
-            {'refresh': False, 'upgrade': False, 'upgrade_packages': ['ruff', 'click']},
-        ),
+        (['--refresh'], LockOptions(refresh=True)),
+        (['--upgrade'], LockOptions(upgrade=True)),
+        (['-P', 'ruff', '--upgrade-package', 'click'], LockOptions(upgrade_packages=('ruff', 'click'))),
     ],
     ids=['refresh', 'upgrade', 'upgrade-package'],
 )
-def test_lock_forwards_flags(
-    mocker: MockerFixture, tmp_path: Path, flags: list[str], expected: dict[str, object]
-) -> None:
+def test_lock_forwards_flags(mocker: MockerFixture, tmp_path: Path, flags: list[str], expected: LockOptions) -> None:
     """`lock` forwards --refresh, --upgrade and --upgrade-package to `uv lock`."""
     config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff')])
     lock_mock = mocker.patch('uv_toolbox.lock.lock_environment', return_value=_uv_lock('new'))
@@ -400,8 +394,7 @@ def test_lock_forwards_flags(
     result = runner.invoke(app, ['--config', str(config_path), 'lock', *flags])
 
     assert result.exit_code == 0, result.output
-    for key, value in expected.items():
-        assert lock_mock.call_args.kwargs[key] == value
+    assert lock_mock.call_args.kwargs['options'] == expected
 
 
 def test_lock_errors_without_config_file(mocker: MockerFixture) -> None:
@@ -440,7 +433,7 @@ def test_lock_check_succeeds_without_writing(mocker: MockerFixture, tmp_path: Pa
         tmp_path,
         env1=EnvironmentLock(uv_lock=_uv_lock('current'), fingerprint=_fingerprint('env1', 'ruff')),
     )
-    original = lock_path.read_text()
+    original = lock_path.read_text(encoding='utf-8')
     check_mock = mocker.patch('uv_toolbox.lock.check_environment', return_value=None)
     lock_mock = mocker.patch('uv_toolbox.lock.lock_environment')
 
@@ -450,7 +443,7 @@ def test_lock_check_succeeds_without_writing(mocker: MockerFixture, tmp_path: Pa
     assert 'Lockfile is up to date' in result.stdout
     assert check_mock.call_args.kwargs['uv_lock'] == _uv_lock('current')
     lock_mock.assert_not_called()
-    assert lock_path.read_text() == original
+    assert lock_path.read_text(encoding='utf-8') == original
 
 
 def test_lock_check_reports_uv_lock_check_failures(mocker: MockerFixture, tmp_path: Path) -> None:
@@ -487,7 +480,9 @@ def test_lock_check_fails_on_stale_fingerprint(mocker: MockerFixture, tmp_path: 
 def test_lock_check_rejects_version_1_lockfile(mocker: MockerFixture, tmp_path: Path) -> None:
     """A version 1 lockfile fails `--check` with a pointer to `uv-toolbox lock`."""
     config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff')])
-    (tmp_path / 'uv-toolbox.lock').write_text('version: 1\nenvironments:\n  env1:\n    requirements: ruff==1\n')
+    (tmp_path / 'uv-toolbox.lock').write_text(
+        'version: 1\nenvironments:\n  env1:\n    requirements: ruff==1\n', encoding='utf-8'
+    )
     check_mock = mocker.patch('uv_toolbox.lock.check_environment')
 
     result = runner.invoke(app, ['--config', str(config_path), 'lock', '--check'])
@@ -562,6 +557,7 @@ def test_install_migrates_version_1_lockfile(mocker: MockerFixture, tmp_path: Pa
     lock_path = tmp_path / 'uv-toolbox.lock'
     lock_path.write_text(
         'version: 1\nenvironments:\n  env1:\n    fingerprint: sha256:x\n    requirements: |\n      ruff==0.14.14\n',
+        encoding='utf-8',
     )
     lock_mock = mocker.patch('uv_toolbox.lock.lock_environment', return_value=_uv_lock('v2'))
     init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
@@ -584,7 +580,7 @@ def test_install_leaves_current_lockfile_untouched(mocker: MockerFixture, tmp_pa
         tmp_path,
         env1=EnvironmentLock(uv_lock=_uv_lock('current'), fingerprint=_fingerprint('env1', 'ruff')),
     )
-    original = lock_path.read_text()
+    original = lock_path.read_text(encoding='utf-8')
     lock_mock = mocker.patch('uv_toolbox.lock.lock_environment')
     mocker.patch('uv_toolbox.cli.initialize_virtualenv')
 
@@ -592,7 +588,7 @@ def test_install_leaves_current_lockfile_untouched(mocker: MockerFixture, tmp_pa
 
     assert result.exit_code == 0, result.output
     lock_mock.assert_not_called()
-    assert lock_path.read_text() == original
+    assert lock_path.read_text(encoding='utf-8') == original
     assert 'Updated' not in result.stderr
 
 
@@ -655,7 +651,7 @@ def test_exec_relocks_stale_environment(mocker: MockerFixture, tmp_path: Path, f
 
 def _write_deprecated_config(tmp_path: Path) -> Path:
     config_path = tmp_path / 'uv-toolbox.yaml'
-    config_path.write_text('environments:\n  - name: env1\n    requirements: ruff\n')
+    config_path.write_text('environments:\n  - name: env1\n    requirements: ruff\n', encoding='utf-8')
     return config_path
 
 
@@ -673,20 +669,20 @@ def test_migrate_config_shows_diff_and_writes_after_confirmation(mocker: MockerF
     assert '-    requirements: ruff' in result.stdout
     assert '+    dependencies: [ruff]' in result.stdout
     assert 'Comments and formatting' in result.stderr
-    assert 'dependencies: [ruff]' in config_path.read_text()
+    assert 'dependencies: [ruff]' in config_path.read_text(encoding='utf-8')
     assert 'Run `uv-toolbox lock`' in result.stdout
 
 
 def test_migrate_config_declined_leaves_file(mocker: MockerFixture, tmp_path: Path) -> None:
     """Declining the confirmation leaves the config untouched and exits nonzero."""
     config_path = _write_deprecated_config(tmp_path)
-    original = config_path.read_text()
+    original = config_path.read_text(encoding='utf-8')
     mocker.patch('uv_toolbox.cli.migrate_config', return_value=Migration(['env1'], 'new\n', rewritable=True))
 
     result = runner.invoke(app, ['--config', str(config_path), 'migrate-config'], input='n\n')
 
     assert result.exit_code == 1
-    assert config_path.read_text() == original
+    assert config_path.read_text(encoding='utf-8') == original
 
 
 def test_migrate_config_yes_skips_prompt(mocker: MockerFixture, tmp_path: Path) -> None:
@@ -697,13 +693,13 @@ def test_migrate_config_yes_skips_prompt(mocker: MockerFixture, tmp_path: Path) 
     result = runner.invoke(app, ['--config', str(config_path), 'migrate-config', '--yes'])
 
     assert result.exit_code == 0, result.output
-    assert config_path.read_text() == 'new\n'
+    assert config_path.read_text(encoding='utf-8') == 'new\n'
 
 
 def test_migrate_config_prints_pyproject_tables(mocker: MockerFixture, tmp_path: Path) -> None:
     """Configs that cannot be rewritten get the replacement tables printed instead."""
     config_path = _write_deprecated_config(tmp_path)
-    original = config_path.read_text()
+    original = config_path.read_text(encoding='utf-8')
     mocker.patch(
         'uv_toolbox.cli.migrate_config',
         return_value=Migration(['env1'], '[[tool.uv-toolbox.environments]]\n', rewritable=False),
@@ -714,7 +710,7 @@ def test_migrate_config_prints_pyproject_tables(mocker: MockerFixture, tmp_path:
     assert result.exit_code == 0, result.output
     assert 'cannot be rewritten automatically' in result.stdout
     assert '[[tool.uv-toolbox.environments]]' in result.stdout
-    assert config_path.read_text() == original
+    assert config_path.read_text(encoding='utf-8') == original
 
 
 def test_migrate_config_nothing_to_do(tmp_path: Path) -> None:

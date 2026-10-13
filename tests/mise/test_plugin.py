@@ -31,6 +31,7 @@ def _run(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
     assert result.returncode == 0, f'Command failed: {command!r}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}'
     return result
@@ -45,6 +46,7 @@ def _write_consumer_config(project_dir: Path, toolbox_config: Path) -> Path:
         _.uv-toolbox = {{ tools = true, config = {json.dumps(str(toolbox_config))} }}
         """).strip()
         + '\n',
+        encoding='utf-8',
     )
     return mise_config
 
@@ -61,6 +63,7 @@ def _write_toolbox_config(project_dir: Path) -> Path:
             executables_override: [mise-plugin-fixture]
         """).strip()
         + '\n',
+        encoding='utf-8',
     )
     return toolbox_config
 
@@ -69,7 +72,7 @@ def _add_fixture_executable(venv_path: Path) -> None:
     """Add an executable that can only be reached through the plugin's shim path."""
     venv.EnvBuilder(with_pip=False).create(venv_path)
     executable = venv_path / 'bin' / 'mise-plugin-fixture'
-    executable.write_text('#!/usr/bin/env sh\nprintf "mise-plugin-local-source\\n"\n')
+    executable.write_text('#!/usr/bin/env sh\nprintf "mise-plugin-local-source\\n"\n', encoding='utf-8')
     executable.chmod(
         executable.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
     )

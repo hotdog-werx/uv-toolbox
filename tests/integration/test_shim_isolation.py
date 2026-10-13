@@ -38,6 +38,7 @@ def test_integration_shim_runs_in_correct_venv(
             executables_override: [python]
     """).strip()
         + '\n',
+        encoding='utf-8',
     )
 
     # Change to the project directory
@@ -49,6 +50,7 @@ def test_integration_shim_runs_in_correct_venv(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     assert install_result.returncode == 0, (
@@ -61,6 +63,7 @@ def test_integration_shim_runs_in_correct_venv(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     assert shim_result.returncode == 0, (
@@ -92,6 +95,7 @@ def test_integration_shim_runs_in_correct_venv(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     assert check_result.returncode == 0, (
@@ -114,6 +118,7 @@ def test_integration_shim_runs_in_correct_venv(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     assert pytest_check.returncode != 0, (

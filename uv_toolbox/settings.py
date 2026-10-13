@@ -279,7 +279,7 @@ class UvToolboxEnvironment(BaseModel, alias_generator=_ALIASES, populate_by_name
     def requirements_text(self) -> str:
         """Return the deprecated requirements content (inline or from the file)."""
         if self.requirements_file is not None:
-            return self.requirements_file.read_text()
+            return self.requirements_file.read_text(encoding='utf-8')
         return self.requirements or ''
 
     def _declared_inputs(self) -> dict[str, object]:
@@ -657,10 +657,12 @@ class UvToolboxSettings(BaseSettings):
         uv_toolbox_yaml = YamlConfigSettingsSource(
             settings_cls,
             yaml_file='uv-toolbox.yaml',
+            yaml_file_encoding='utf-8',
         )
         uv_toolbox_json = JsonConfigSettingsSource(
             settings_cls,
             json_file='uv-toolbox.json',
+            json_file_encoding='utf-8',
         )
         uv_toolbox_toml = TomlConfigSettingsSource(
             settings_cls,
@@ -694,9 +696,9 @@ def _config_file_source(
 
     suffix = config_file.suffix.lower()
     if suffix in {'.yaml', '.yml'}:
-        return YamlConfigSettingsSource(settings_cls, yaml_file=config_file)
+        return YamlConfigSettingsSource(settings_cls, yaml_file=config_file, yaml_file_encoding='utf-8')
     if suffix == '.json':
-        return JsonConfigSettingsSource(settings_cls, json_file=config_file)
+        return JsonConfigSettingsSource(settings_cls, json_file=config_file, json_file_encoding='utf-8')
     if suffix == '.toml':
         return TomlConfigSettingsSource(settings_cls, toml_file=config_file)
     msg = f'Unsupported config file extension: {config_file}'
@@ -707,7 +709,7 @@ def _pyproject_has_uv_toolbox_config(path: Path) -> bool:
     if not path.is_file():
         return False
     try:
-        data = tomllib.loads(path.read_text())
+        data = tomllib.loads(path.read_text(encoding='utf-8'))
     except (OSError, tomllib.TOMLDecodeError):
         return False
     tool_section = data.get('tool')

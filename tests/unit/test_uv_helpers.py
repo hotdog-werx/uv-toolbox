@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from uv_toolbox.project import LockOptions
 from uv_toolbox.settings import UvToolboxSettings
 from uv_toolbox.uv_helpers import _machine_lock_path, initialize_virtualenv
 
@@ -53,9 +54,9 @@ def test_first_install_without_repo_lock_writes_machine_lock(tmp_path: Path, moc
 
     initialize_virtualenv(env, settings)
 
-    lock_mock.assert_called_once_with(env, settings, upgrade=False)
+    lock_mock.assert_called_once_with(env, settings, options=LockOptions(upgrade=False))
     sync_mock.assert_called_once_with(env, settings, uv_lock='fresh-lock', clear=False)
-    assert _machine_lock_path(env.venv_path(settings)).read_text() == 'fresh-lock'
+    assert _machine_lock_path(env.venv_path(settings)).read_text(encoding='utf-8') == 'fresh-lock'
 
 
 def test_later_installs_reuse_machine_lock(tmp_path: Path, mocker: MockerFixture) -> None:
@@ -64,7 +65,7 @@ def test_later_installs_reuse_machine_lock(tmp_path: Path, mocker: MockerFixture
     env = settings.environments[0]
     machine_lock = _machine_lock_path(env.venv_path(settings))
     machine_lock.parent.mkdir(parents=True)
-    machine_lock.write_text('machine-lock')
+    machine_lock.write_text('machine-lock', encoding='utf-8')
     lock_mock = mocker.patch('uv_toolbox.uv_helpers.lock_environment')
     sync_mock = mocker.patch('uv_toolbox.uv_helpers.sync_environment')
 
@@ -80,11 +81,11 @@ def test_upgrade_relocks_machine_lock(tmp_path: Path, mocker: MockerFixture) -> 
     env = settings.environments[0]
     machine_lock = _machine_lock_path(env.venv_path(settings))
     machine_lock.parent.mkdir(parents=True)
-    machine_lock.write_text('old-lock')
+    machine_lock.write_text('old-lock', encoding='utf-8')
     lock_mock = mocker.patch('uv_toolbox.uv_helpers.lock_environment', return_value='new-lock')
     mocker.patch('uv_toolbox.uv_helpers.sync_environment')
 
     initialize_virtualenv(env, settings, upgrade=True)
 
-    lock_mock.assert_called_once_with(env, settings, upgrade=True)
-    assert machine_lock.read_text() == 'new-lock'
+    lock_mock.assert_called_once_with(env, settings, options=LockOptions(upgrade=True))
+    assert machine_lock.read_text(encoding='utf-8') == 'new-lock'
