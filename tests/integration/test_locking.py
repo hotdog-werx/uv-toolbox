@@ -27,7 +27,11 @@ pytestmark = pytest.mark.skipif(
     reason='uv cannot lock file:// git sources on Windows',
 )
 
+# Ignore the developer's own git config (commit signing, hooks, default
+# branch...) so test commits never wait on a signing agent or prompt.
 _GIT_ENV = {
+    'GIT_CONFIG_GLOBAL': os.devnull,
+    'GIT_CONFIG_NOSYSTEM': '1',
     'GIT_AUTHOR_NAME': 'test',
     'GIT_AUTHOR_EMAIL': 'test@example.com',
     'GIT_COMMITTER_NAME': 'test',
@@ -42,6 +46,7 @@ def _git(repo: Path, *args: str) -> str:
         check=True,
         capture_output=True,
         text=True,
+        encoding='utf-8',
         env={**os.environ, **_GIT_ENV},
     )
     return result.stdout.strip()
@@ -59,6 +64,7 @@ def _release(repo: Path, name: str, version: str, tag: str) -> str:
             requires = ["uv_build>=0.12,<0.13"]
             build-backend = "uv_build"
         """),
+        encoding='utf-8',
     )
     _git(repo, 'add', '-A')
     _git(repo, 'commit', '-qm', version)
@@ -80,6 +86,7 @@ def _uvtb(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
 
@@ -116,6 +123,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                   tool-a: {{ git: '{(repos / 'tool-a').as_uri()}', tag: v1 }}
                   tool-b: {{ git: '{(repos / 'tool-b').as_uri()}', tag: v1 }}
         """),
+        encoding='utf-8',
     )
     return project_dir
 
@@ -123,7 +131,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_relock_and_check_do_not_look_up_git_refs(project: Path) -> None:
     """Once locked, `lock` and `lock --check` work without reaching the git sources at all."""
     _assert_ok(_uvtb(project, 'lock'))
-    lock_text = (project / 'uv-toolbox.lock').read_text()
+    lock_text = (project / 'uv-toolbox.lock').read_text(encoding='utf-8')
     assert 'version: 2' in lock_text
     assert 'uv_lock: |' in lock_text
     assert '?tag=v1#' in lock_text
@@ -138,7 +146,7 @@ def test_relock_and_check_do_not_look_up_git_refs(project: Path) -> None:
     assert 'Lockfile is up to date' in relock.stdout
     assert 'Updating' not in relock.stderr
     _assert_ok(_uvtb(project, 'lock', '--check'))
-    assert (project / 'uv-toolbox.lock').read_text() == lock_text
+    assert (project / 'uv-toolbox.lock').read_text(encoding='utf-8') == lock_text
 
 
 def test_moved_tag_passes_check_until_upgrade(project: Path) -> None:
@@ -165,7 +173,10 @@ def test_config_change_fails_check_until_relocked(project: Path) -> None:
     """Editing the config makes `--check` fail until `lock` re-locks the environment."""
     _assert_ok(_uvtb(project, 'lock'))
     config = project / 'uv-toolbox.yaml'
-    config.write_text(config.read_text().replace('dependencies: [tool-a, tool-b]', 'dependencies: [tool-a]'))
+    config.write_text(
+        config.read_text(encoding='utf-8').replace('dependencies: [tool-a, tool-b]', 'dependencies: [tool-a]'),
+        encoding='utf-8',
+    )
 
     check = _uvtb(project, 'lock', '--check')
     assert check.returncode == 1

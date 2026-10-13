@@ -4,12 +4,16 @@ from typing import TYPE_CHECKING
 
 from uv_toolbox.lock import check_lock, generate_lock, stale_environments, update_lock
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
+from uv_toolbox.project import LockOptions
 from uv_toolbox.settings import UvToolboxSettings
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from pytest_mock import MockerFixture
+
+
+_OPTIONS = LockOptions(upgrade_packages=('ruff',), refresh=True)
 
 
 def _settings(tmp_path: Path, *envs: tuple[str, list[str]]) -> UvToolboxSettings:
@@ -38,7 +42,7 @@ def test_generate_lock_locks_every_environment_from_existing_entries(tmp_path: P
         },
     )
 
-    lock = generate_lock(settings, existing_lock=existing, upgrade_packages=['ruff'], refresh=True)
+    lock = generate_lock(settings, existing_lock=existing, options=_OPTIONS)
 
     assert list(lock.environments) == ['fmt', 'test', 'new']
     for env in settings.environments:
@@ -51,9 +55,7 @@ def test_generate_lock_locks_every_environment_from_existing_entries(tmp_path: P
     assert calls['test'] == {
         'uv_lock': None,
         'legacy_requirements': 'pytest==9',
-        'upgrade': False,
-        'upgrade_packages': ['ruff'],
-        'refresh': True,
+        'options': _OPTIONS,
     }
     assert calls['new']['uv_lock'] is None
 
@@ -63,10 +65,10 @@ def test_generate_lock_without_existing_lock_forwards_upgrade(tmp_path: Path, mo
     settings = _settings(tmp_path, ('fmt', ['ruff']))
     lock_mock = mocker.patch('uv_toolbox.lock.lock_environment', return_value='lock')
 
-    generate_lock(settings, upgrade=True)
+    generate_lock(settings, options=LockOptions(upgrade=True))
 
     assert lock_mock.call_args.kwargs['uv_lock'] is None
-    assert lock_mock.call_args.kwargs['upgrade'] is True
+    assert lock_mock.call_args.kwargs['options'] == LockOptions(upgrade=True)
 
 
 def test_stale_environments(tmp_path: Path) -> None:

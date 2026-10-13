@@ -26,6 +26,7 @@ def _write_config(path: Path, venv_path: str = '.uv-toolbox') -> None:
                 '',
             ],
         ),
+        encoding='utf-8',
     )
 
 
@@ -134,6 +135,7 @@ environments:
   - name: env2
     dependencies: [ruff]
 """,
+        encoding='utf-8',
     )
 
     monkeypatch.chdir(tmp_path)
@@ -161,6 +163,7 @@ environments:
   - name: env2
     dependencies: [black]
 """,
+        encoding='utf-8',
     )
 
     monkeypatch.chdir(tmp_path)
@@ -187,6 +190,7 @@ venv_path = ".uv-toolbox"
 name = "env1"
 dependencies = ["ruff"]
 """,
+        encoding='utf-8',
     )
 
     # Change to subdirectory

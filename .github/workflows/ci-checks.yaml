@@ -35,6 +35,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up uv
+        # Needed before mise: its postinstall hooks run uv-toolbox and
+        # `repolish link`, which provides the python:* tasks. Mirrors devkit's
+        # python-checks workflow.
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: '**/pyproject.toml'
       - name: Install mise tools
         uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
       - name: Install python dependencies

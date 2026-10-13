@@ -15,7 +15,7 @@ from uv_toolbox.lockfile import (
     write_lockfile,
 )
 
-_REAL_UV_LOCK = (Path(__file__).parent.parent / 'fixtures' / 'repolish.uv.lock').read_text()
+_REAL_UV_LOCK = (Path(__file__).parent.parent / 'fixtures' / 'repolish.uv.lock').read_text(encoding='utf-8')
 
 _SMALL_UV_LOCK = dedent("""\
     version = 1
@@ -37,7 +37,7 @@ def test_real_uv_lock_round_trips_byte_for_byte_in_block_style(tmp_path: Path) -
     path = tmp_path / 'uv-toolbox.lock'
     write_lockfile(lock, path)
 
-    raw = path.read_text()
+    raw = path.read_text(encoding='utf-8')
     assert '    uv_lock: |\n      version = 1\n' in raw
     assert read_lockfile(path).environments['repolish'].uv_lock == _REAL_UV_LOCK
 
@@ -62,7 +62,7 @@ def test_write_lockfile_layout(tmp_path: Path) -> None:
     )
     path = tmp_path / 'uv-toolbox.lock'
     write_lockfile(lock, path)
-    raw = path.read_text()
+    raw = path.read_text(encoding='utf-8')
 
     assert raw.startswith(f'version: {LOCKFILE_VERSION}\nenvironments:\n')
     assert raw.index('fingerprint: sha256:abc') < raw.index('uv_lock: |')
@@ -102,6 +102,7 @@ def test_read_version_1_lockfile_keeps_legacy_requirements(tmp_path: Path) -> No
                   ruff==0.14.14 \\
                       --hash=sha256:aaaa
         """),
+        encoding='utf-8',
     )
 
     loaded = read_lockfile(path)
@@ -117,7 +118,7 @@ def test_read_version_1_lockfile_keeps_legacy_requirements(tmp_path: Path) -> No
 def test_read_lockfile_without_version_is_version_1(tmp_path: Path) -> None:
     """Lockfiles predating the version key are treated as version 1."""
     path = tmp_path / 'uv-toolbox.lock'
-    path.write_text('environments:\n  fmt:\n    requirements: ruff==1\n')
+    path.write_text('environments:\n  fmt:\n    requirements: ruff==1\n', encoding='utf-8')
 
     assert read_lockfile(path).version == 1
 
@@ -125,7 +126,7 @@ def test_read_lockfile_without_version_is_version_1(tmp_path: Path) -> None:
 def test_read_empty_lockfile(tmp_path: Path) -> None:
     """An empty file reads as a version 1 lock without environments."""
     path = tmp_path / 'uv-toolbox.lock'
-    path.write_text('')
+    path.write_text('', encoding='utf-8')
 
     loaded = read_lockfile(path)
 
@@ -142,3 +143,15 @@ def test_lockfiles_equal_compares_uv_lock_and_fingerprint() -> None:
     assert not lockfiles_equal(base, UvToolboxLock(environments={'env': EnvironmentLock('other', 'a')}))
     assert not lockfiles_equal(base, UvToolboxLock(environments={'other': EnvironmentLock(_SMALL_UV_LOCK, 'a')}))
     assert not lockfiles_equal(base, UvToolboxLock(version=1, environments=base.environments))
+
+
+def test_non_ascii_uv_lock_round_trips_in_block_style(tmp_path: Path) -> None:
+    """Non-ASCII content (e.g. a local path) stays a readable UTF-8 block scalar."""
+    content = _SMALL_UV_LOCK + 'source = { editable = "../../../plugins/café" }\n'
+    lock = UvToolboxLock(environments={'env': EnvironmentLock(uv_lock=content)})
+    path = tmp_path / 'uv-toolbox.lock'
+    write_lockfile(lock, path)
+
+    assert 'plugins/café' in path.read_text(encoding='utf-8')
+    assert 'uv_lock: |' in path.read_text(encoding='utf-8')
+    assert read_lockfile(path).environments['env'].uv_lock == content

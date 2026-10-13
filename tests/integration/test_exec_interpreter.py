@@ -17,6 +17,7 @@ def _uvtb(cwd: Path, *args: str, env: dict[str, str]) -> subprocess.CompletedPro
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
         env=env,
     )
     assert result.returncode == 0, f'stdout:\n{result.stdout}\nstderr:\n{result.stderr}'
@@ -35,6 +36,7 @@ def test_exec_ignores_conflicting_interpreter_requests(tmp_path: Path, redirect:
                 requires_python: '>=3.11'
                 dependencies: []
         """),
+        encoding='utf-8',
     )
     env: dict[str, str] = {**os.environ, 'UV_PYTHON_DOWNLOADS': 'never'}
     env.pop('VIRTUAL_ENV', None)
@@ -43,7 +45,7 @@ def test_exec_ignores_conflicting_interpreter_requests(tmp_path: Path, redirect:
 
     # No such interpreter exists, so uv fails if it honours the request.
     if redirect == 'python-version':
-        (tmp_path / '.python-version').write_text('3.99\n')
+        (tmp_path / '.python-version').write_text('3.99\n', encoding='utf-8')
     else:
         env['UV_PYTHON'] = '3.99'
     result = _uvtb(tmp_path, 'exec', '--', 'python', '-c', 'import sys; print(sys.prefix)', env=env)

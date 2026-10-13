@@ -13,6 +13,7 @@ from packaging.version import Version
 from uv_toolbox import project
 from uv_toolbox.errors import ExternalCommandError, UnsupportedRequirementError, UvVersionError
 from uv_toolbox.project import (
+    LockOptions,
     ProjectSpec,
     _index_env,
     _legacy_pins,
@@ -29,7 +30,8 @@ from uv_toolbox.project import ensure_uv_version as real_ensure_uv_version
 from uv_toolbox.settings import UvToolboxSettings
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
+    from unittest.mock import MagicMock
 
     from pytest_mock import MockerFixture
 
@@ -46,7 +48,7 @@ def _settings(tmp_path: Path, **env: object) -> UvToolboxSettings:
     )
 
 
-def _fake_uv(mocker: MockerFixture, *, lock_content: str = _UV_LOCK, fail: Sequence[str] = ()):  # noqa: ANN202
+def _fake_uv(mocker: MockerFixture, *, lock_content: str = _UV_LOCK, fail: Sequence[str] = ()) -> MagicMock:
     """Mock run_checked: `uv lock` writes uv.lock in its cwd; commands matching `fail` raise."""
 
     def run(args: Sequence[str], **kwargs: object) -> str:
@@ -56,7 +58,7 @@ def _fake_uv(mocker: MockerFixture, *, lock_content: str = _UV_LOCK, fail: Seque
         if list(args[:2]) == ['uv', 'lock'] and '--check' not in args:
             cwd = kwargs['cwd']
             assert isinstance(cwd, Path)
-            (cwd / 'uv.lock').write_text(lock_content)
+            (cwd / 'uv.lock').write_text(lock_content, encoding='utf-8')
         if list(args[:3]) == ['uv', 'python', 'find']:
             return '3.13.3'
         return ''
@@ -64,8 +66,8 @@ def _fake_uv(mocker: MockerFixture, *, lock_content: str = _UV_LOCK, fail: Seque
     return mocker.patch('uv_toolbox.project.run_checked', side_effect=run)
 
 
-def _commands(run_mock: object) -> list[list[str]]:
-    return [list(call.kwargs['args']) for call in run_mock.call_args_list]  # ty: ignore[unresolved-attribute]
+def _commands(run_mock: MagicMock) -> list[list[str]]:
+    return [list(call.kwargs['args']) for call in run_mock.call_args_list]
 
 
 # ── requirements parsing ─────────────────────────────────────────────────────
@@ -107,7 +109,7 @@ def test_index_env_mirrors_converted_index_settings() -> None:
 
 def test_parse_requirements_maps_pip_options(tmp_path: Path) -> None:
     """Requirements, includes and editables go to uv add; other options map onto [tool.uv] settings."""
-    (tmp_path / 'constraints.txt').write_text('# pins\nidna<3.8\n')
+    (tmp_path / 'constraints.txt').write_text('# pins\nidna<3.8\n', encoding='utf-8')
     content = dedent("""\
         ruff>=0.14
         -r base.txt
@@ -150,7 +152,7 @@ def test_parse_requirements_maps_pip_options(tmp_path: Path) -> None:
 def test_parse_requirements_rejects_unconvertible_lines(tmp_path: Path, content: str, files: dict[str, str]) -> None:
     """Options with no uv project equivalent fail with an error naming the line."""
     for name, text in files.items():
-        (tmp_path / name).write_text(text)
+        (tmp_path / name).write_text(text, encoding='utf-8')
 
     with pytest.raises(UnsupportedRequirementError, match='Cannot convert requirements line'):
         parse_requirements(content, base_dir=tmp_path)
@@ -288,12 +290,17 @@ def test_lock_environment_starts_from_existing_lock(tmp_path: Path, mocker: Mock
     def capture(args: Sequence[str], **kwargs: object) -> str:
         cwd = kwargs['cwd']
         assert isinstance(cwd, Path)
-        seen_lock.append((cwd / 'uv.lock').read_text())
+        seen_lock.append((cwd / 'uv.lock').read_text(encoding='utf-8'))
         return original(args, **kwargs)
 
     run_mock.side_effect = capture
 
-    result = lock_environment(env, settings, uv_lock=_UV_LOCK, upgrade_packages=['ruff', 'click'], refresh=True)
+    result = lock_environment(
+        env,
+        settings,
+        uv_lock=_UV_LOCK,
+        options=LockOptions(upgrade_packages=('ruff', 'click'), refresh=True),
+    )
 
     assert result == _UV_LOCK + '# new\n'
     assert seen_lock == [_UV_LOCK]
@@ -307,7 +314,7 @@ def test_lock_environment_starts_from_existing_lock(tmp_path: Path, mocker: Mock
         'VIRTUAL_ENV': None,
         'UV_PROJECT_ENVIRONMENT': None,
     }
-    assert (tmp_path / '.uv-toolbox' / '.gitignore').read_text().endswith('*\n')
+    assert (tmp_path / '.uv-toolbox' / '.gitignore').read_text(encoding='utf-8').endswith('*\n')
 
 
 def test_lock_environment_without_existing_lock_removes_stale_project_lock(
@@ -319,17 +326,17 @@ def test_lock_environment_without_existing_lock_removes_stale_project_lock(
     env = settings.environments[0]
     project_dir = settings.project_dir(env)
     project_dir.mkdir(parents=True)
-    (project_dir / 'uv.lock').write_text('stale')
+    (project_dir / 'uv.lock').write_text('stale', encoding='utf-8')
     run_mock = _fake_uv(mocker)
 
     def check_absent(args: Sequence[str], **kwargs: object) -> str:
         assert not (project_dir / 'uv.lock').exists()
-        (project_dir / 'uv.lock').write_text(_UV_LOCK)
+        (project_dir / 'uv.lock').write_text(_UV_LOCK, encoding='utf-8')
         return ''
 
     run_mock.side_effect = check_absent
 
-    lock_environment(env, settings, upgrade=True)
+    lock_environment(env, settings, options=LockOptions(upgrade=True))
 
     assert _commands(run_mock) == [['uv', 'lock', '--upgrade']]
 
@@ -345,7 +352,7 @@ def test_lock_environment_seeds_from_legacy_pins(tmp_path: Path, mocker: MockerF
     def capture(args: Sequence[str], **kwargs: object) -> str:
         cwd = kwargs['cwd']
         assert isinstance(cwd, Path)
-        pyprojects.append(tomllib.loads((cwd / 'pyproject.toml').read_text())['tool']['uv'])
+        pyprojects.append(tomllib.loads((cwd / 'pyproject.toml').read_text(encoding='utf-8'))['tool']['uv'])
         return original(args, **kwargs)
 
     run_mock.side_effect = capture
@@ -373,7 +380,7 @@ def test_lock_environment_falls_back_when_legacy_pins_conflict(tmp_path: Path, m
         if calls == 1:
             raise ExternalCommandError(cmd_args=args, returncode=1, stderr='unsatisfiable')
         assert not (cwd / 'uv.lock').exists()
-        (cwd / 'uv.lock').write_text(_UV_LOCK)
+        (cwd / 'uv.lock').write_text(_UV_LOCK, encoding='utf-8')
         return ''
 
     mocker.patch('uv_toolbox.project.run_checked', side_effect=run)
@@ -390,7 +397,7 @@ def test_lock_environment_skips_seeding_without_pins_or_when_upgrading(tmp_path:
     env = settings.environments[0]
 
     lock_environment(env, settings, legacy_requirements='tool @ git+https://example.com/tool.git@abc\n')
-    lock_environment(env, settings, legacy_requirements='ruff==1.0\n', upgrade=True)
+    lock_environment(env, settings, legacy_requirements='ruff==1.0\n', options=LockOptions(upgrade=True))
 
     assert _commands(run_mock) == [['uv', 'lock'], ['uv', 'lock', '--upgrade']]
 
@@ -423,7 +430,7 @@ def test_sync_environment_tries_offline_first(tmp_path: Path, mocker: MockerFixt
     ]
     assert run_mock.call_args.kwargs['extra_env']['UV_PROJECT_ENVIRONMENT'] == str(venv_path)
     assert run_mock.call_args.kwargs['extra_env']['VIRTUAL_ENV'] is None
-    assert (settings.project_dir(env) / 'uv.lock').read_text() == _UV_LOCK
+    assert (settings.project_dir(env) / 'uv.lock').read_text(encoding='utf-8') == _UV_LOCK
 
 
 @pytest.mark.filterwarnings('ignore::FutureWarning')
@@ -439,7 +446,7 @@ def test_sync_environment_needs_no_conversion_for_deprecated_requirements(
     sync_environment(env, settings, uv_lock=_UV_LOCK)
 
     assert _commands(run_mock) == [['uv', 'sync', '--frozen', '--offline']]
-    pyproject = tomllib.loads((settings.project_dir(env) / 'pyproject.toml').read_text())
+    pyproject = tomllib.loads((settings.project_dir(env) / 'pyproject.toml').read_text(encoding='utf-8'))
     assert pyproject['project']['dependencies'] == []
     assert pyproject['tool']['uv']['index'] == [{'url': 'https://idx'}]
 
@@ -465,21 +472,28 @@ def test_convert_requirements_runs_uv_add_from_config_dir(tmp_path: Path, mocker
     """Requirements and includes go to one `uv add`, editables to another, and the result is read back."""
     (tmp_path / 'reqs').mkdir()
     req_file = tmp_path / 'reqs' / 'requirements.txt'
-    req_file.write_text('ruff\n-r base.txt\n-e ./plugin\n--extra-index-url https://idx\n')
+    req_file.write_text('ruff\n-r base.txt\n-e ./plugin\n--extra-index-url https://idx\n', encoding='utf-8')
     settings = _settings(tmp_path, requirements_file=str(req_file), uv={'prerelease': 'allow'})
     env = settings.environments[0]
     adds: list[list[str]] = []
 
-    def run(args: Sequence[str], **kwargs: object) -> str:
+    def run(
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        extra_env: Mapping[str, str | None],
+        **_options: object,
+    ) -> str:
         adds.append(list(args))
-        assert kwargs['cwd'] == settings.config_dir
+        assert cwd == settings.config_dir
         scratch = Path(args[args.index('--project') + 1])
         assert scratch.parent == tmp_path / '.uv-toolbox'
         if '--editable' in args:
-            assert kwargs['extra_env']['UV_INDEX'] == 'https://idx'  # ty: ignore[not-subscriptable]
+            assert extra_env['UV_INDEX'] == 'https://idx'
             (scratch / 'pyproject.toml').write_text(
                 '[project]\ndependencies = ["plugin", "ruff"]\n'
                 '[tool.uv.sources]\nplugin = { path = "../../plugin", editable = true }\n',
+                encoding='utf-8',
             )
         return ''
 
@@ -511,7 +525,7 @@ def test_lock_environment_converts_deprecated_requirements(tmp_path: Path, mocke
     lock_environment(env, settings)
 
     convert.assert_called_once_with(env, settings, requires_python='>=3.12')
-    pyproject = tomllib.loads((settings.project_dir(env) / 'pyproject.toml').read_text())
+    pyproject = tomllib.loads((settings.project_dir(env) / 'pyproject.toml').read_text(encoding='utf-8'))
     assert pyproject['project']['dependencies'] == ['tool']
     assert pyproject['tool']['uv']['sources'] == {'tool': {'path': '../../../vendor/tool'}}
 
@@ -524,16 +538,16 @@ def test_sync_environment_without_locked_requires_python(tmp_path: Path, mocker:
 
     sync_environment(env, settings, uv_lock='version = 1\n')
 
-    pyproject = tomllib.loads((settings.project_dir(env) / 'pyproject.toml').read_text())
+    pyproject = tomllib.loads((settings.project_dir(env) / 'pyproject.toml').read_text(encoding='utf-8'))
     assert pyproject['project']['requires-python'] == '>=3.11'
 
 
 def test_ci_uv_matrix_spans_supported_versions() -> None:
     """CI tests the minimum supported uv minor and the uv version pinned for development."""
     root = Path(__file__).parents[2]
-    workflow = yaml.safe_load((root / '.github' / 'workflows' / 'ci-checks.yaml').read_text())
+    workflow = yaml.safe_load((root / '.github' / 'workflows' / 'ci-checks.yaml').read_text(encoding='utf-8'))
     tested = [Version(v) for v in workflow['jobs']['uv-compatibility']['strategy']['matrix']['uv']]
-    pinned = Version(tomllib.loads((root / 'mise.toml').read_text())['tools']['uv'])
+    pinned = Version(tomllib.loads((root / 'mise.toml').read_text(encoding='utf-8'))['tools']['uv'])
 
     assert min(tested).release[:2] == project.MIN_UV_VERSION.release[:2]
     assert max(tested) == pinned

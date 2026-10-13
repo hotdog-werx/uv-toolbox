@@ -72,6 +72,8 @@ def run_checked(  # noqa: PLR0913
             cwd=cwd,
             check=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             stdout=stdout,
             stderr=stderr,
             env=_process_env(extra_env),

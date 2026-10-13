@@ -34,6 +34,7 @@ def _write_config(tmp_path: Path) -> Path:
                 '',
             ],
         ),
+        encoding='utf-8',
     )
     return config_path
 
@@ -128,7 +129,7 @@ def test_from_context_raises_when_pyproject_missing_tool_section(
 ) -> None:
     """Raises MissingConfigFileError when pyproject.toml exists but lacks a [tool.uv-toolbox] section."""
     pyproject_path = tmp_path / 'pyproject.toml'
-    pyproject_path.write_text('[tool.other]\nvalue = "nope"\n')
+    pyproject_path.write_text('[tool.other]\nvalue = "nope"\n', encoding='utf-8')
     monkeypatch.chdir(tmp_path)
     ctx = cast('typer.Context', SimpleNamespace(obj={}))
 
@@ -142,7 +143,7 @@ def test_from_context_raises_when_pyproject_tool_is_not_mapping(
 ) -> None:
     """Raises MissingConfigFileError when pyproject.toml's `tool` key is not a table."""
     pyproject_path = tmp_path / 'pyproject.toml'
-    pyproject_path.write_text('tool = "not-a-table"\n')
+    pyproject_path.write_text('tool = "not-a-table"\n', encoding='utf-8')
     monkeypatch.chdir(tmp_path)
     ctx = cast('typer.Context', SimpleNamespace(obj={}))
 
@@ -156,7 +157,7 @@ def test_from_context_raises_when_pyproject_is_invalid(
 ) -> None:
     """Raises MissingConfigFileError when pyproject.toml contains malformed TOML."""
     pyproject_path = tmp_path / 'pyproject.toml'
-    pyproject_path.write_text('[tool.uv-toolbox\n')
+    pyproject_path.write_text('[tool.uv-toolbox\n', encoding='utf-8')
     monkeypatch.chdir(tmp_path)
     ctx = cast('typer.Context', SimpleNamespace(obj={}))
 
@@ -182,6 +183,7 @@ def test_from_context_reads_pyproject_when_config_set(
                 '',
             ],
         ),
+        encoding='utf-8',
     )
     monkeypatch.chdir(tmp_path)
     ctx = cast(
@@ -210,6 +212,7 @@ def test_from_context_reads_json_and_toml_configs(
                     'environments': [{'name': 'env1', 'dependencies': ['ruff']}],
                 },
             ),
+            encoding='utf-8',
         )
     else:
         venv_path = (tmp_path / '.uv-toolbox').as_posix()
@@ -223,6 +226,7 @@ def test_from_context_reads_json_and_toml_configs(
                     '',
                 ],
             ),
+            encoding='utf-8',
         )
     monkeypatch.chdir(tmp_path)
     ctx = cast(
@@ -241,7 +245,7 @@ def test_from_context_rejects_unsupported_config_extension(
 ) -> None:
     """Raises ValueError when the configured config file has an unsupported extension like .ini."""
     config_path = tmp_path / 'config.ini'
-    config_path.write_text('[dummy]\nvalue = true\n')
+    config_path.write_text('[dummy]\nvalue = true\n', encoding='utf-8')
     monkeypatch.chdir(tmp_path)
     ctx = cast(
         'typer.Context',

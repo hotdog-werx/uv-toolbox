@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from uv_toolbox.project import lock_environment, sync_environment
+from uv_toolbox.project import LockOptions, lock_environment, sync_environment
 from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
 
@@ -26,10 +26,10 @@ def _machine_uv_lock(
     """
     machine_lock = _machine_lock_path(env.venv_path(settings=settings))
     if machine_lock.exists() and not upgrade:
-        return machine_lock.read_text()
-    uv_lock = lock_environment(env, settings, upgrade=upgrade)
+        return machine_lock.read_text(encoding='utf-8')
+    uv_lock = lock_environment(env, settings, options=LockOptions(upgrade=upgrade))
     machine_lock.parent.mkdir(parents=True, exist_ok=True)
-    machine_lock.write_text(uv_lock)
+    machine_lock.write_text(uv_lock, encoding='utf-8')
     return uv_lock
 
 

@@ -38,10 +38,11 @@ def test_integration_exec_installs_project_dependencies(
             main()
     """).strip()
         + '\n',
+        encoding='utf-8',
     )
 
     # Create __init__.py
-    (src_dir / '__init__.py').write_text('')
+    (src_dir / '__init__.py').write_text('', encoding='utf-8')
 
     # Create pyproject.toml with CLI entry point and dev dependencies
     pyproject = project_dir / 'pyproject.toml'
@@ -63,6 +64,7 @@ def test_integration_exec_installs_project_dependencies(
         build-backend = "hatchling.build"
     """).strip()
         + '\n',
+        encoding='utf-8',
     )
 
     # Create uv-toolbox.yaml that installs ruff and the project itself
@@ -78,6 +80,7 @@ def test_integration_exec_installs_project_dependencies(
             executables_override: [ruff]
     """).strip()
         + '\n',
+        encoding='utf-8',
     )
 
     # Change to the project directory so we don't need --config
@@ -89,6 +92,7 @@ def test_integration_exec_installs_project_dependencies(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     # Verify install succeeded
@@ -106,6 +110,7 @@ def test_integration_exec_installs_project_dependencies(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     # Verify the command succeeded
@@ -139,6 +144,7 @@ def test_integration_exec_installs_project_dependencies(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     assert import_check.returncode == 0, (
@@ -152,6 +158,7 @@ def test_integration_exec_installs_project_dependencies(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     assert ruff_check.returncode == 0, 'ruff should be available in the environment'
@@ -165,6 +172,7 @@ def test_integration_exec_installs_project_dependencies(
         check=False,
         capture_output=True,
         text=True,
+        encoding='utf-8',
     )
 
     # pytest should NOT be importable - it's only in dev dependencies, not in requirements

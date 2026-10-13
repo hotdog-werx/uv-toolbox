@@ -3,22 +3,17 @@ from __future__ import annotations
 import typing
 
 from uv_toolbox.lockfile import EnvironmentLock, UvToolboxLock
-from uv_toolbox.project import check_environment, lock_environment
+from uv_toolbox.project import DEFAULT_LOCK_OPTIONS, LockOptions, check_environment, lock_environment
 
 if typing.TYPE_CHECKING:  # pragma: no cover
-    from collections.abc import Sequence
-
     from uv_toolbox.settings import UvToolboxEnvironment, UvToolboxSettings
 
 
-def _lock_entry(  # noqa: PLR0913
+def _lock_entry(
     env: UvToolboxEnvironment,
     settings: UvToolboxSettings,
     existing: EnvironmentLock | None,
-    *,
-    upgrade: bool = False,
-    upgrade_packages: Sequence[str] = (),
-    refresh: bool = False,
+    options: LockOptions = DEFAULT_LOCK_OPTIONS,
 ) -> EnvironmentLock:
     """Lock one environment, starting from its existing entry if there is one."""
     uv_lock = lock_environment(
@@ -26,9 +21,7 @@ def _lock_entry(  # noqa: PLR0913
         settings,
         uv_lock=existing.uv_lock if existing is not None else None,
         legacy_requirements=existing.legacy_requirements if existing is not None else None,
-        upgrade=upgrade,
-        upgrade_packages=upgrade_packages,
-        refresh=refresh,
+        options=options,
     )
     return EnvironmentLock(uv_lock=uv_lock, fingerprint=env.lock_fingerprint())
 
@@ -37,22 +30,17 @@ def generate_lock(
     settings: UvToolboxSettings,
     *,
     existing_lock: UvToolboxLock | None = None,
-    upgrade: bool = False,
-    upgrade_packages: Sequence[str] = (),
-    refresh: bool = False,
+    options: LockOptions = DEFAULT_LOCK_OPTIONS,
 ) -> UvToolboxLock:
     """Lock every configured environment.
 
     Existing pins are kept wherever they still satisfy the configuration, as
-    with `uv lock`; pass upgrade or upgrade_packages to move them.
+    with `uv lock`; set upgrade options to move them.
 
     Args:
         settings: UV toolbox settings.
         existing_lock: The current repo lockfile contents, if any.
-        upgrade: Re-resolve every package to its latest compatible version.
-        upgrade_packages: Re-resolve only these packages (and whatever they
-            require).
-        refresh: Bypass cached package metadata.
+        options: Upgrade and refresh flags forwarded to `uv lock`.
 
     Returns:
         A UvToolboxLock covering exactly the configured environments.
@@ -60,14 +48,7 @@ def generate_lock(
     lock = UvToolboxLock()
     for env in settings.environments:
         existing = existing_lock.environments.get(env.name) if existing_lock is not None else None
-        lock.environments[env.name] = _lock_entry(
-            env,
-            settings,
-            existing,
-            upgrade=upgrade,
-            upgrade_packages=upgrade_packages,
-            refresh=refresh,
-        )
+        lock.environments[env.name] = _lock_entry(env, settings, existing, options)
     return lock
 
 

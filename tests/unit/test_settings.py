@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import warnings
 from pathlib import Path
 
@@ -237,7 +238,7 @@ def test_lockfile_path_is_none_without_config_file() -> None:
 def test_lockfile_path_is_sibling_of_config_file(tmp_path: Path) -> None:
     """lockfile_path resolves to `uv-toolbox.lock` next to the config file that produced the settings."""
     config = tmp_path / 'uv-toolbox.yaml'
-    config.write_text('environments:\n  - name: env1\n    dependencies: [ruff]\n')
+    config.write_text('environments:\n  - name: env1\n    dependencies: [ruff]\n', encoding='utf-8')
     settings = UvToolboxSettings.model_validate(
         {
             'config_file': config,
@@ -336,7 +337,7 @@ def test_deprecated_requirements_warn(declared: dict[str, object]) -> None:
 @pytest.mark.filterwarnings('ignore::FutureWarning')
 def test_relative_requirements_file_resolves_against_config_dir(tmp_path: Path) -> None:
     """A relative requirements_file is read from the config file's directory, whatever the cwd."""
-    (tmp_path / 'requirements.txt').write_text('ruff\n')
+    (tmp_path / 'requirements.txt').write_text('ruff\n', encoding='utf-8')
     settings = UvToolboxSettings.model_validate(
         {
             'config_file': tmp_path / 'uv-toolbox.yaml',
@@ -353,6 +354,31 @@ def test_config_dir_defaults_to_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.chdir(tmp_path)
 
     assert _make_settings(envs=[{'name': 'env1', 'dependencies': ['ruff']}]).config_dir == tmp_path
+
+
+@pytest.mark.parametrize('suffix', ['.yaml', '.json'])
+def test_config_files_are_read_as_utf8(tmp_path: Path, suffix: str) -> None:
+    """Non-ASCII config content survives on platforms whose default encoding isn't UTF-8."""
+    value = 'café — ✓'
+    config = tmp_path / f'uv-toolbox{suffix}'
+    if suffix == '.yaml':
+        config.write_text(
+            f'# Tools — formatting\nenvironments:\n  - name: env1\n    dependencies: [ruff]\n'
+            f'    environment:\n      NOTE: "{value}"\n',
+            encoding='utf-8',
+        )
+    else:
+        config.write_text(
+            json.dumps(
+                {'environments': [{'name': 'env1', 'dependencies': ['ruff'], 'environment': {'NOTE': value}}]},
+                ensure_ascii=False,
+            ),
+            encoding='utf-8',
+        )
+
+    settings = UvToolboxSettings.model_validate({'config_file': config})
+
+    assert settings.environments[0].environment == {'NOTE': value}
 
 
 def test_project_dir_is_next_to_config_file(tmp_path: Path) -> None:
@@ -632,10 +658,10 @@ def test_lock_fingerprint_uses_unexpanded_environment(monkeypatch: pytest.Monkey
 def test_lock_fingerprint_tracks_requirements_file_contents(tmp_path: Path) -> None:
     """A requirements_file environment's fingerprint follows the file's contents, not its path."""
     req_file = tmp_path / 'requirements.txt'
-    req_file.write_text('ruff\n')
+    req_file.write_text('ruff\n', encoding='utf-8')
     env = UvToolboxEnvironment(name='env1', requirements_file=req_file)
     inline = UvToolboxEnvironment(name='env1', requirements='ruff')
 
     assert env.lock_fingerprint() == inline.lock_fingerprint()
-    req_file.write_text('ruff>=0.15\n')
+    req_file.write_text('ruff>=0.15\n', encoding='utf-8')
     assert env.lock_fingerprint() != inline.lock_fingerprint()

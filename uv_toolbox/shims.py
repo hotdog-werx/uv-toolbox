@@ -142,7 +142,7 @@ def _create_unix_shim(
 {environment_lines}export VIRTUAL_ENV={shlex.quote(str(venv_path))}
 exec uv run --no-project --python "{python_exe}" -- "{target_path}" "$@"
 """
-    shim_path.write_text(script)
+    shim_path.write_text(script, encoding='utf-8')
     # Make executable
     shim_path.chmod(
         shim_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
@@ -171,7 +171,9 @@ def _create_windows_shim(
 {environment_lines}set "VIRTUAL_ENV={venv_path}"
 uv run --no-project --python "{python_exe}" -- "{target_path}" %*
 """
-    bat_path.write_text(script)
+    # cmd.exe reads batch files in a legacy code page, not UTF-8, so keep the
+    # platform's locale encoding (as before) rather than forcing UTF-8.
+    bat_path.write_text(script, encoding='locale')
 
 
 def _find_windows_executable(bin_path: Path, exe_name: str) -> Path | None:
