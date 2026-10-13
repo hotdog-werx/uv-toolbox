@@ -61,9 +61,9 @@ jobs:
         env:
           UV_VERSION: ${{ matrix.uv }}
         run: |
-          set -o pipefail
           command -v uv
           uv --version
-          uv --version | grep -F "uv $UV_VERSION "
+          # Some builds print only `uv X.Y.Z`, others add `(commit date)`.
+          test "$(uv --version | cut -d' ' -f2)" = "$UV_VERSION"
           python -m pytest tests/integration
   ## end-custom-ci-checks
