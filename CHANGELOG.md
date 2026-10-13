@@ -1,3 +1,11 @@
+## [0.4.1] - 2026-10-13
+
+### 🐛 Bug Fixes
+
+- Add locked, frozen flags (#25) by
+  [@jamestrousdale](https://github.com/jamestrousdale) in
+  [#25](https://github.com/hotdog-werx/uv-toolbox/pull/25)
+
 ## [0.4.0] - 2026-10-12
 
 ### 🚀 Features
