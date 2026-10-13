@@ -124,12 +124,14 @@ class LockMode(StrEnum):
 
 def _lock_mode(*, locked: bool, frozen: bool, upgrade: bool = False) -> LockMode:
     """Return the lock mode for the --locked / --frozen flags, rejecting conflicts."""
+    conflict = None
     if locked and frozen:
-        msg = '--locked and --frozen cannot be combined.'
-        raise typer.BadParameter(msg)
-    if upgrade and (locked or frozen):
-        msg = '--upgrade cannot be combined with --locked or --frozen.'
-        raise typer.BadParameter(msg)
+        conflict = '--locked and --frozen cannot be combined.'
+    elif upgrade and (locked or frozen):
+        conflict = '--upgrade cannot be combined with --locked or --frozen.'
+    if conflict is not None:
+        typer.secho(conflict, err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1)
     if locked:
         return LockMode.LOCKED
     return LockMode.FROZEN if frozen else LockMode.AUTO

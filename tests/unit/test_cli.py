@@ -880,5 +880,5 @@ def test_conflicting_lock_flags_are_rejected(tmp_path: Path, flags: list[str], m
 
     result = runner.invoke(app, ['--config', str(config_path), 'install', *flags])
 
-    assert result.exit_code == 2
-    assert message in result.output
+    assert result.exit_code == 1
+    assert message in result.stderr
