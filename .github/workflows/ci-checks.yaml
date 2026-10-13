@@ -50,11 +50,20 @@ jobs:
       - name: Put the project venv on PATH
         # The tests run `uvtb` from here; it calls whichever `uv` is first on PATH.
         run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install uv ${{ matrix.uv }}
+        # Added to PATH after mise's tool paths, so it takes precedence over the
+        # uv pinned in mise.toml for the rest of the job.
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ matrix.uv }}
+          enable-cache: false
       - name: Run integration tests with uv ${{ matrix.uv }}
         env:
           UV_VERSION: ${{ matrix.uv }}
         run: |
-          mise install "uv@$UV_VERSION"
-          mise exec "uv@$UV_VERSION" -- uv --version | grep -F "uv $UV_VERSION "
-          mise exec "uv@$UV_VERSION" -- python -m pytest tests/integration
+          set -o pipefail
+          command -v uv
+          uv --version
+          uv --version | grep -F "uv $UV_VERSION "
+          python -m pytest tests/integration
   ## end-custom-ci-checks
