@@ -2,14 +2,21 @@ import difflib
 import os
 import sys
 import warnings
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from uv_toolbox.errors import CommandDelimiterRequiredError, LockfileOutdatedError, UvToolboxError
+from uv_toolbox.errors import (
+    CommandDelimiterRequiredError,
+    LockfileMissingError,
+    LockfileOutOfDateError,
+    OutdatedLockfileFormatError,
+    UvToolboxError,
+)
 from uv_toolbox.lock import check_lock, generate_lock, stale_environments, update_lock
-from uv_toolbox.lockfile import lockfiles_equal, read_lockfile, write_lockfile
+from uv_toolbox.lockfile import UvToolboxLock, lockfiles_equal, read_lockfile, write_lockfile
 from uv_toolbox.migrate import migrate_config
 from uv_toolbox.process import run_checked
 from uv_toolbox.project import LockOptions
@@ -67,7 +74,7 @@ def _check_lockfile(
     """
     existing_lock = read_lockfile(lockfile_path)
     if existing_lock.outdated_format:
-        raise LockfileOutdatedError(lockfile_path)
+        raise OutdatedLockfileFormatError(lockfile_path)
     stale = stale_environments(settings, existing_lock)
     if stale:
         typer.secho(
@@ -104,33 +111,117 @@ def _write_lockfile(
     typer.echo(f'Wrote {lockfile_path}')
 
 
-def _relock_if_stale(settings: UvToolboxSettings) -> None:
-    """Re-lock environments whose config changed since the repo lockfile was written.
+class LockMode(StrEnum):
+    """How `install` and `exec` treat a repo lockfile that doesn't match the config."""
 
-    Does nothing when there is no repo lockfile. Otherwise re-resolves stale
-    environments, drops entries for removed ones, rewrites the lockfile, and
-    points the settings at the fresh pins.
+    AUTO = 'auto'
+    """Re-lock what changed and rewrite the lockfile."""
+    LOCKED = 'locked'
+    """Fail instead of re-locking (like `uv sync --locked`)."""
+    FROZEN = 'frozen'
+    """Install the lockfile as-is, without checking it (like `uv sync --frozen`)."""
+
+
+def _lock_mode(*, locked: bool, frozen: bool, upgrade: bool = False) -> LockMode:
+    """Return the lock mode for the --locked / --frozen flags, rejecting conflicts."""
+    if locked and frozen:
+        msg = '--locked and --frozen cannot be combined.'
+        raise typer.BadParameter(msg)
+    if upgrade and (locked or frozen):
+        msg = '--upgrade cannot be combined with --locked or --frozen.'
+        raise typer.BadParameter(msg)
+    if locked:
+        return LockMode.LOCKED
+    return LockMode.FROZEN if frozen else LockMode.AUTO
+
+
+_LOCKED_OPTION = typer.Option(
+    '--locked',
+    envvar='UV_TOOLBOX_LOCKED',
+    help='Fail instead of re-locking when uv-toolbox.lock is missing or out of date with the configuration.',
+)
+_FROZEN_OPTION = typer.Option(
+    '--frozen',
+    envvar='UV_TOOLBOX_FROZEN',
+    help='Install from uv-toolbox.lock as-is, without checking it against the configuration.',
+)
+
+
+def _out_of_date_reasons(
+    lock: UvToolboxLock,
+    stale: list[str],
+    removed: list[str],
+) -> list[str]:
+    """Explain why a lockfile no longer matches the configuration."""
+    if lock.outdated_format:
+        return ['It was written in an older format.']
+    reasons = []
+    if stale:
+        reasons.append(f'Configuration changed for: {", ".join(stale)}.')
+    if removed:
+        reasons.append(f'It has entries for removed environments: {", ".join(removed)}.')
+    return reasons
+
+
+def _check_frozen(settings: UvToolboxSettings, lock: UvToolboxLock, lockfile_path: Path) -> None:
+    """Fail when a frozen install has no locked entry for some environment."""
+    unlocked = [
+        env.name
+        for env in settings.environments
+        if (entry := lock.environments.get(env.name)) is None or entry.uv_lock is None
+    ]
+    if unlocked:
+        raise LockfileOutOfDateError(lockfile_path, [f'No locked environment for: {", ".join(unlocked)}.'])
+
+
+def _relock_if_stale(settings: UvToolboxSettings, mode: LockMode = LockMode.AUTO) -> None:
+    """Bring the repo lockfile in line with the config before installing.
+
+    In AUTO mode, re-locks environments whose config changed, drops entries
+    for removed ones, rewrites the lockfile, and points the settings at the
+    fresh pins; without a repo lockfile it does nothing. LOCKED raises instead
+    of changing anything, and FROZEN only checks that every environment is
+    locked. Both require a repo lockfile.
+
+    Args:
+        settings: UV toolbox settings.
+        mode: How to treat a lockfile that doesn't match the config.
+
+    Raises:
+        LockfileMissingError: In LOCKED or FROZEN mode without a repo lockfile.
+        LockfileOutOfDateError: In LOCKED mode when the lockfile needs changes,
+            or in FROZEN mode when an environment isn't locked.
     """
     lockfile_path = settings.lockfile_path
     if lockfile_path is None or not lockfile_path.exists():
+        if mode is not LockMode.AUTO:
+            raise LockfileMissingError(lockfile_path)
         return
     existing_lock = read_lockfile(lockfile_path)
+    if mode is LockMode.FROZEN:
+        _check_frozen(settings, existing_lock, lockfile_path)
+        return
     stale = stale_environments(settings, existing_lock)
     configured = {env.name for env in settings.environments}
-    if not stale and existing_lock.environments.keys() == configured:
+    removed = sorted(existing_lock.environments.keys() - configured)
+    if not stale and not removed:
         return
+    if mode is LockMode.LOCKED:
+        raise LockfileOutOfDateError(lockfile_path, _out_of_date_reasons(existing_lock, stale, removed))
+    _relock(settings, existing_lock, stale, lockfile_path)
+
+
+def _relock(
+    settings: UvToolboxSettings,
+    existing_lock: UvToolboxLock,
+    stale: list[str],
+    lockfile_path: Path,
+) -> None:
+    """Re-lock stale environments, rewrite the lockfile and apply it to the settings."""
     if existing_lock.outdated_format:
-        typer.secho(
-            f'Lockfile format is outdated; re-locking: {lockfile_path}',
-            err=True,
-            fg=typer.colors.YELLOW,
-        )
+        typer.secho(f'Lockfile format is outdated; re-locking: {lockfile_path}', err=True, fg=typer.colors.YELLOW)
     elif stale:
-        typer.secho(
-            f'Lockfile is out of date; re-locking: {", ".join(stale)}',
-            err=True,
-            fg=typer.colors.YELLOW,
-        )
+        typer.secho(f'Lockfile is out of date; re-locking: {", ".join(stale)}', err=True, fg=typer.colors.YELLOW)
     lock_data = update_lock(settings, existing_lock, stale)
     write_lockfile(lock_data, lockfile_path)
     typer.secho(f'Updated {lockfile_path}', err=True)
@@ -156,7 +247,7 @@ def _root(
 
 
 @app.command(name='install')
-def install(
+def install(  # noqa: PLR0913 - each parameter is a CLI option
     ctx: typer.Context,
     *,
     venv_path: Annotated[
@@ -185,11 +276,14 @@ def install(
             help='Re-resolve dependencies and refresh the lockfile.',
         ),
     ] = False,
+    locked: Annotated[bool, _LOCKED_OPTION] = False,
+    frozen: Annotated[bool, _FROZEN_OPTION] = False,
 ) -> None:
     """Install UV tool environments."""
+    mode = _lock_mode(locked=locked, frozen=frozen, upgrade=upgrade)
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     try:
-        _relock_if_stale(settings)
+        _relock_if_stale(settings, mode)
     except UvToolboxError as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
@@ -207,7 +301,7 @@ def install(
 
 
 @app.command(name='lock')
-def lock(  # noqa: PLR0913
+def lock(  # noqa: PLR0913 - each parameter is a CLI option
     ctx: typer.Context,
     venv_path: Annotated[
         Path | None,
@@ -273,7 +367,7 @@ def lock(  # noqa: PLR0913
 
 
 @app.command(name='exec')
-def exec_(
+def exec_(  # noqa: PLR0913 - each parameter is a CLI option
     ctx: typer.Context,
     *,
     command: Annotated[
@@ -309,13 +403,16 @@ def exec_(
             help='Path to the directory where virtual environments are stored.',
         ),
     ] = None,
+    locked: Annotated[bool, _LOCKED_OPTION] = False,
+    frozen: Annotated[bool, _FROZEN_OPTION] = False,
 ) -> None:
     """Execute a command within a UV tool environment."""
     if '--' not in sys.argv:
         raise CommandDelimiterRequiredError
+    mode = _lock_mode(locked=locked, frozen=frozen)
     settings = UvToolboxSettings.from_context(ctx, venv_path=venv_path)
     try:
-        _relock_if_stale(settings)
+        _relock_if_stale(settings, mode)
         env = settings.select_environment(
             env_name=env_name,
         )

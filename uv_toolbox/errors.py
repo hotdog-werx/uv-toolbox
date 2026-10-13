@@ -128,8 +128,23 @@ class UvVersionError(UvToolboxError):
         super().__init__(f'uv-toolbox requires uv >= {minimum}, found: {found.strip() or "unknown"}.')
 
 
-class LockfileOutdatedError(UvToolboxError):
+class OutdatedLockfileFormatError(UvToolboxError):
     """Raised when the repo lockfile was written in an older format."""
 
     def __init__(self, path: Path) -> None:
         super().__init__(f'Lockfile format is outdated: {path}. Run `uv-toolbox lock`.')
+
+
+class LockfileMissingError(UvToolboxError):
+    """Raised when --locked or --frozen is used without a repo lockfile."""
+
+    def __init__(self, path: Path | None) -> None:
+        location = path if path is not None else 'uv-toolbox.lock'
+        super().__init__(f'Lockfile is missing: {location}. Run `uv-toolbox lock`.')
+
+
+class LockfileOutOfDateError(UvToolboxError):
+    """Raised when --locked or --frozen finds a lockfile that doesn't match the configuration."""
+
+    def __init__(self, path: Path, reasons: Sequence[str]) -> None:
+        super().__init__(f'Lockfile is out of date: {path}. {" ".join(reasons)} Run `uv-toolbox lock`.')

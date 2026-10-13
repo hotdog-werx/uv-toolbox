@@ -743,3 +743,142 @@ def test_cli_prints_config_deprecations_without_source_locations(tmp_path: Path)
     assert result.exit_code == 0, result.output
     assert result.stderr.startswith('FutureWarning: Environment ')
     assert 'pydantic' not in result.stderr
+
+
+# ── --locked / --frozen ──────────────────────────────────────────────────────
+
+
+def _stale_project(tmp_path: Path) -> tuple[Path, Path, str]:
+    """A config whose committed lock entry was locked from different inputs."""
+    config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff>=0.15')])
+    lock_path = _write_lock(tmp_path, env1=EnvironmentLock(uv_lock=_uv_lock('old'), fingerprint='sha256:old'))
+    return config_path, lock_path, lock_path.read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize(
+    'invocation',
+    [['install', '--locked'], ['install'], ['exec', '--locked', '--', 'ruff']],
+    ids=['install-flag', 'install-envvar', 'exec-flag'],
+)
+def test_locked_fails_instead_of_relocking(
+    mocker: MockerFixture,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invocation: list[str],
+) -> None:
+    """--locked (or UV_TOOLBOX_LOCKED) reports a stale lockfile and changes nothing."""
+    config_path, lock_path, original = _stale_project(tmp_path)
+    if invocation == ['install']:
+        monkeypatch.setenv('UV_TOOLBOX_LOCKED', '1')
+    mocker.patch.object(sys, 'argv', ['uvtb', *invocation])
+    lock_mock = mocker.patch('uv_toolbox.lock.lock_environment')
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+    run_mock = mocker.patch('uv_toolbox.cli.run_checked')
+
+    result = runner.invoke(app, ['--config', str(config_path), *invocation])
+
+    assert result.exit_code == 1
+    assert 'Lockfile is out of date' in result.stderr
+    assert 'Configuration changed for: env1.' in result.stderr
+    lock_mock.assert_not_called()
+    init_mock.assert_not_called()
+    run_mock.assert_not_called()
+    assert lock_path.read_text(encoding='utf-8') == original
+
+
+@pytest.mark.parametrize(
+    ('lock_text', 'reason'),
+    [
+        ('version: 1\nenvironments:\n  env1:\n    requirements: ruff==1\n', 'written in an older format'),
+        (None, 'removed environments: gone'),
+    ],
+    ids=['outdated-format', 'removed-environment'],
+)
+def test_locked_reports_every_kind_of_drift(
+    mocker: MockerFixture,
+    tmp_path: Path,
+    lock_text: str | None,
+    reason: str,
+) -> None:
+    """--locked also fails on an old lockfile format and on entries for removed environments."""
+    config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff')])
+    if lock_text is None:
+        current = EnvironmentLock(uv_lock=_uv_lock('current'), fingerprint=_fingerprint('env1', 'ruff'))
+        _write_lock(tmp_path, env1=current, gone=EnvironmentLock(uv_lock=_uv_lock('gone')))
+    else:
+        (tmp_path / 'uv-toolbox.lock').write_text(lock_text, encoding='utf-8')
+    mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install', '--locked'])
+
+    assert result.exit_code == 1
+    assert reason in result.stderr
+
+
+@pytest.mark.parametrize('flag', ['--locked', '--frozen'])
+def test_strict_modes_require_a_lockfile(mocker: MockerFixture, tmp_path: Path, flag: str) -> None:
+    """Without uv-toolbox.lock, strict installs fail instead of locking on the fly."""
+    config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff')])
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install', flag])
+
+    assert result.exit_code == 1
+    assert 'Lockfile is missing' in result.stderr
+    init_mock.assert_not_called()
+
+
+def test_locked_installs_a_current_lockfile(mocker: MockerFixture, tmp_path: Path) -> None:
+    """A lockfile that matches the config installs normally under --locked."""
+    config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff')])
+    _write_lock(tmp_path, env1=EnvironmentLock(uv_lock=_uv_lock('current'), fingerprint=_fingerprint('env1', 'ruff')))
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install', '--locked'])
+
+    assert result.exit_code == 0, result.output
+    init_mock.assert_called_once()
+
+
+def test_frozen_installs_a_stale_lockfile_as_is(mocker: MockerFixture, tmp_path: Path) -> None:
+    """--frozen skips the config check and installs exactly what the lockfile lists."""
+    config_path, lock_path, original = _stale_project(tmp_path)
+    lock_mock = mocker.patch('uv_toolbox.lock.lock_environment')
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install', '--frozen'])
+
+    assert result.exit_code == 0, result.output
+    lock_mock.assert_not_called()
+    assert init_mock.call_args.kwargs['env'].locked_uv_lock == _uv_lock('old')
+    assert lock_path.read_text(encoding='utf-8') == original
+
+
+def test_frozen_fails_for_an_unlocked_environment(mocker: MockerFixture, tmp_path: Path) -> None:
+    """--frozen can't install an environment the lockfile has no entry for."""
+    config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff'), ('env2', 'black')])
+    _write_lock(tmp_path, env1=EnvironmentLock(uv_lock=_uv_lock('current')))
+    init_mock = mocker.patch('uv_toolbox.cli.initialize_virtualenv')
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install', '--frozen'])
+
+    assert result.exit_code == 1
+    assert 'No locked environment for: env2.' in result.stderr
+    init_mock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('flags', 'message'),
+    [
+        (['--locked', '--frozen'], '--locked and --frozen cannot be combined'),
+        (['--locked', '--upgrade'], '--upgrade cannot be combined with --locked or --frozen'),
+    ],
+)
+def test_conflicting_lock_flags_are_rejected(tmp_path: Path, flags: list[str], message: str) -> None:
+    """Contradictory flag combinations fail before anything runs."""
+    config_path = _write_config(tmp_path, venv_path=tmp_path / '.venvs', envs=[('env1', 'ruff')])
+
+    result = runner.invoke(app, ['--config', str(config_path), 'install', *flags])
+
+    assert result.exit_code == 2
+    assert message in result.output
