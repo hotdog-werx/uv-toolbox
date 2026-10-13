@@ -130,6 +130,27 @@ until the next install.
 Files pulled in from a deprecated `requirements_file` with `-r` or `-c` are not
 fingerprinted. Run `uvtb lock` after editing those.
 
+### Strict installs: `--locked` and `--frozen`
+
+To stop `install` and `exec` from ever rewriting `uv-toolbox.lock`, pass one of
+these flags. They mirror `uv sync --locked` and `uv sync --frozen`:
+
+| Flag       | Environment variable  | Behavior                                                                                                                                                                      |
+| ---------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--locked` | `UV_TOOLBOX_LOCKED=1` | Fail instead of re-locking when the lockfile is missing, in the old format, out of date with the config, or has entries for removed environments. Otherwise install as usual. |
+| `--frozen` | `UV_TOOLBOX_FROZEN=1` | Install exactly what the lockfile lists, without comparing it to the config. Fails only when the lockfile is missing or an environment has no entry.                          |
+
+```bash
+uvtb install --locked             # CI: the committed lockfile must match the config
+UV_TOOLBOX_LOCKED=1 uvtb install  # the same, set once for a whole job
+uvtb exec --frozen -- ruff check  # use the lockfile as-is, even if the config moved on
+```
+
+`--locked` is the usual choice for CI: it catches a config change committed
+without its lockfile, like `uvtb lock --check`, and installs in the same step.
+Neither flag can be combined with `install --upgrade`, which only applies when
+there is no repo lockfile.
+
 ## Machine Lock
 
 Without a repo lockfile, the first `uvtb install` locks each environment online
@@ -200,6 +221,9 @@ In CI, two caches are worth preserving between runs:
 | ---------------------- | ------------------------- | -------------------------------------- |
 | `~/.cache/uv/`         | hash of `uv-toolbox.lock` | Skips downloading wheels (biggest win) |
 | `~/.cache/uv-toolbox/` | hash of `uv-toolbox.lock` | Skips venv creation and sync entirely  |
+
+Install with `uvtb install --locked` (or set `UV_TOOLBOX_LOCKED=1`) so CI never
+re-locks; see [strict installs](#strict-installs-locked-and-frozen).
 
 Both caches should bust when `uv-toolbox.lock` changes.
 
