@@ -17,7 +17,7 @@ jobs:
     uses: hotdog-werx/devkit/.github/workflows/__python_python-checks.yaml@v0
     with:
       operating-systems: '["ubuntu-latest", "windows-latest"]'
-      codecov: true
+      codecov: false
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
