@@ -8,6 +8,10 @@ GITHUB_REPO_NAME = "{{ config_root | basename }}"
 GITHUB_REPO = "{{ env.GITHUB_REPO_OWNER }}/{{ env.GITHUB_REPO_NAME }}"
 GIT_CLIFF_CONFIG = "./cliff.toml"
 _.uv-toolbox = { tools = true }
+_.file = [".repolish/*/mise-tasks/defaults.env"]
+# Keep using the tools pinned in this file and honor the repo Ruff overrides.
+DK_UVTB_TOOLS_EXEC = ""
+DK_RUFF_CONFIG = "pyproject.toml"
 
 # uv-toolbox install provisions the "repolish" env (repolish + devkit
 # provider packages) before repolish link can use it. repolish link then
@@ -60,7 +64,6 @@ shellcheck = "0.11.0"
 includes = [
   "mise-tasks",
   ".repolish/hotdogwerx-devkit-workspace/mise-tasks",
-  ".repolish/hotdogwerx-devkit-workspace/mise-tasks.toml",
   ".repolish/hotdogwerx-devkit-python/mise-tasks",
 ]
 

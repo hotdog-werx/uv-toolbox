@@ -1,10 +1,10 @@
 version: 2
 environments:
   repolish:
-    fingerprint: sha256:0eec0b6f39c2556242ebf9500492d6f8510830e2df2e9d68d74f40c50aaae368
+    fingerprint: sha256:5cf6f0c13e4042757b379acdfcd7987e0f308fe4d6dadb3bfb17ba466451f5f0
     uv_lock: |
       version = 1
-      revision = 5
+      revision = 3
       requires-python = ">=3.11"
 
       [[package]]
@@ -52,15 +52,16 @@ environments:
       [[package]]
       name = "hotdogwerx-devkit-python"
       version = "0.1.0"
-      source = { git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-python&tag=0.1.4#0de802099634a9675c03f564ad0b84711c709693" }
+      source = { git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-python&tag=0.2.0#bf98e0adc6770dd3628fcfa55d68c1d4ac550ebc" }
       dependencies = [
+          { name = "hotdogwerx-devkit-workspace" },
           { name = "repolish" },
       ]
 
       [[package]]
       name = "hotdogwerx-devkit-releez"
       version = "0.1.0"
-      source = { git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-releez&tag=0.1.4#0de802099634a9675c03f564ad0b84711c709693" }
+      source = { git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-releez&tag=0.2.0#bf98e0adc6770dd3628fcfa55d68c1d4ac550ebc" }
       dependencies = [
           { name = "repolish" },
       ]
@@ -68,7 +69,7 @@ environments:
       [[package]]
       name = "hotdogwerx-devkit-workspace"
       version = "0.1.0"
-      source = { git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-workspace&tag=0.1.4#0de802099634a9675c03f564ad0b84711c709693" }
+      source = { git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-workspace&tag=0.2.0#bf98e0adc6770dd3628fcfa55d68c1d4ac550ebc" }
       dependencies = [
           { name = "repolish" },
       ]
@@ -377,7 +378,7 @@ environments:
 
       [[package]]
       name = "repolish"
-      version = "1.6.2"
+      version = "1.19.1"
       source = { registry = "https://pypi.org/simple" }
       dependencies = [
           { name = "cyclopts" },
@@ -386,9 +387,9 @@ environments:
           { name = "pydantic" },
           { name = "typing-extensions", marker = "python_full_version < '3.12'" },
       ]
-      sdist = { url = "https://files.pythonhosted.org/packages/54/fa/e1d8682d4a0d2ba0b674f01fd6efa5e1998f5869c66624f0b6c8127d9b3a/repolish-1.6.2.tar.gz", hash = "sha256:9a566bfd4a348ca1c8b4219cbc570381335fb09d0d43f4251e5a492366ee17bc", size = 126504, upload-time = "2026-07-23T01:54:41.143Z" }
+      sdist = { url = "https://files.pythonhosted.org/packages/a3/2a/f20e6248572e884cd89998243ff5007f0f035fc7b89f3181db537ef5624a/repolish-1.19.1.tar.gz", hash = "sha256:f645972550b1c59a0db8f7420378d3869c6d0444d7245f3963525296e3b93026", size = 290229, upload-time = "2026-11-16T18:31:39.967Z" }
       wheels = [
-          { url = "https://files.pythonhosted.org/packages/7c/26/03ea0f7be10fbc937b7b7f9f388a6f89dacc5f7a0006bdd6a8bb3246722f/repolish-1.6.2-py3-none-any.whl", hash = "sha256:809d2fe9824b2b789006ca30934937cdaf774a7a98ec8de4970501b6b7070d3e", size = 177031, upload-time = "2026-07-23T01:54:43.382Z" },
+          { url = "https://files.pythonhosted.org/packages/dc/90/994401f29a2c281bad844ecea493b13c4afe32804c5114664cc32f2b2c91/repolish-1.19.1-py3-none-any.whl", hash = "sha256:8d9e437ff6af674a4cf55398500d52d695c024024de00d362712822b3909ce61", size = 385567, upload-time = "2026-11-16T18:31:38.717Z" },
       ]
 
       [[package]]
@@ -460,8 +461,8 @@ environments:
 
       [package.metadata]
       requires-dist = [
-          { name = "hotdogwerx-devkit-python", git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-python&tag=0.1.4" },
-          { name = "hotdogwerx-devkit-releez", git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-releez&tag=0.1.4" },
-          { name = "hotdogwerx-devkit-workspace", git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-workspace&tag=0.1.4" },
+          { name = "hotdogwerx-devkit-python", git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-python&tag=0.2.0" },
+          { name = "hotdogwerx-devkit-releez", git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-releez&tag=0.2.0" },
+          { name = "hotdogwerx-devkit-workspace", git = "https://github.com/hotdog-werx/devkit.git?subdirectory=packages%2Fdevkit-workspace&tag=0.2.0" },
           { name = "repolish", specifier = ">=1.4.0,<2" },
       ]
