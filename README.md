@@ -4,7 +4,7 @@
 [![PyPI](https://img.shields.io/pypi/v/uv-toolbox.svg)](https://pypi.org/project/uv-toolbox/)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![codecov](https://codecov.io/gh/hotdog-werx/uv-toolbox/branch/master/graph/badge.svg)](https://codecov.io/gh/hotdog-werx/uv-toolbox)
+[![Coverage](https://raw.githubusercontent.com/hotdog-werx/uv-toolbox/mustard-badges/badge.svg)](https://github.com/hotdog-werx/uv-toolbox/actions/workflows/ci-checks.yaml?query=branch%3Amaster)
 
 `uv-toolbox` is a CLI tool for managing Python tool environments. It will help
 you create multiple virtual environments and manage their dependencies through a

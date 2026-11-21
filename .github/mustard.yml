@@ -1,0 +1,13 @@
+# Mustard coverage policy. Mustard reads this file from the PR's merge base,
+# so changes take effect after they reach master.
+require_uploads: true
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+    patch:
+      default:
+        target: 100%
+badge:
+  enabled: true
